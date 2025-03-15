@@ -2,6 +2,7 @@
 #define APP_HPP
 
 #include "horizon/core/core.hpp"
+#include "horizon/core/logger.hpp"
 #include "horizon/core/window.hpp"
 
 #include "horizon/gfx/base.hpp"
@@ -9,6 +10,7 @@
 #include "horizon/gfx/helper.hpp"
 
 #include <GLFW/glfw3.h>
+#include <utility>
 
 namespace aurora {
 
@@ -22,31 +24,16 @@ public:
     _ctx = core::make_ref<gfx::context_t>(true);
 #endif // AURORA_NO_GFX_VALIDATION
 
-    auto [width, height] = _window->dimensions();
-
-    _global_sampler = _ctx->create_sampler({});
-
-    gfx::config_image_t config_final_image{};
-    config_final_image.vk_width = width;
-    config_final_image.vk_height = height;
-    config_final_image.vk_depth = 1;
-    config_final_image.vk_type = VK_IMAGE_TYPE_2D;
-    config_final_image.vk_format = _final_image_format;
-    config_final_image.vk_usage =
-        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    config_final_image.vk_mips = 1;
-    config_final_image.debug_name = "final image";
-    _final_image = _ctx->create_image(config_final_image);
-    _final_image_view = _ctx->create_image_view({.handle_image = _final_image});
-
-    gfx::base_config_t base_config{.window = *_window,
-                                   .context = *_ctx,
-                                   .sampler = _global_sampler,
-                                   .final_image_view = _final_image_view};
+    gfx::base_config_t base_config{
+        .window = *_window,
+        .context = *_ctx,
+    };
     _base = core::make_ref<gfx::base_t>(base_config);
 
-    gfx::helper::imgui_init(*_window, *_ctx, _base->_swapchain,
-                            _final_image_format);
+    gfx::helper::imgui_init(
+        *_window, *_ctx, _base->_swapchain,
+        _ctx->get_image(_ctx->get_swapchain(_base->_swapchain).handle_images[0])
+            .config.vk_format);
   }
 
   ~app_t() {
@@ -61,30 +48,20 @@ public:
         break;
 
       auto [width, height] = _window->dimensions();
+      auto &swapchain = _ctx->get_swapchain(_base->_swapchain);
+      if (_ctx->get_image(swapchain.handle_images[0]).config.vk_width !=
+              width ||
+          _ctx->get_image(swapchain.handle_images[0]).config.vk_height !=
+              height) {
+        _base->resize_swapchain();
+      }
+      // horizon_info("{} {}", width, height);
+
       _base->begin();
 
+      _base->begin_swapchain_renderpass();
+
       auto cbuf = _base->current_commandbuffer();
-
-      _ctx->cmd_image_memory_barrier(
-          cbuf, _final_image, VK_IMAGE_LAYOUT_UNDEFINED,
-          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
-          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-      gfx::rendering_attachment_t color_rendering_attachment{};
-      color_rendering_attachment.clear_value = {0, 0, 0, 0};
-      color_rendering_attachment.image_layout =
-          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-      color_rendering_attachment.load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
-      color_rendering_attachment.store_op = VK_ATTACHMENT_STORE_OP_STORE;
-      color_rendering_attachment.handle_image_view = _final_image_view;
-
-      _ctx->cmd_begin_rendering(cbuf, {color_rendering_attachment},
-                                std::nullopt,
-                                VkRect2D{VkOffset2D{},
-                                         {static_cast<uint32_t>(width),
-                                          static_cast<uint32_t>(height)}});
 
       gfx::helper::imgui_newframe();
 
@@ -144,16 +121,7 @@ public:
 
       gfx::helper::imgui_endframe(*_ctx, cbuf);
 
-      _ctx->cmd_end_rendering(cbuf);
-
-      // transition image to shader read only optimal
-      _ctx->cmd_image_memory_barrier(
-          cbuf, _final_image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
-          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-
+      _base->end_swapchain_renderpass();
       _base->end();
     }
   }
@@ -161,11 +129,6 @@ public:
 private:
   core::ref<core::window_t> _window;
   core::ref<gfx::context_t> _ctx;
-
-  VkFormat _final_image_format = VK_FORMAT_R8G8B8A8_UNORM;
-  gfx::handle_sampler_t _global_sampler;
-  gfx::handle_image_t _final_image;
-  gfx::handle_image_view_t _final_image_view;
 
   core::ref<gfx::base_t> _base;
 };
