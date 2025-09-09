@@ -7,13 +7,6 @@
 
 #include "horizon/core/components.hpp"
 #include "horizon/gfx/types.hpp"
-#include "math/triangle.hpp"
-#include <cstdlib>
-#include <cstring>
-#include <iostream>
-
-#include <GLFW/glfw3.h>
-#include <optional>
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan_core.h>
 
