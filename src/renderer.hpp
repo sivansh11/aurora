@@ -50,12 +50,17 @@ static_assert(sizeof(push_constant_t) <= 128,
 }  // namespace shader
 
 struct renderer_t {
-  renderer_t() {
-    window  = core::make_ref<core::window_t>("aurora", 640, 420);
+  renderer_t(uint32_t width, uint32_t height) {
+    window  = core::make_ref<core::window_t>("aurora", width, height);
     context = core::make_ref<gfx::context_t>(true);
     base    = core::make_ref<gfx::base_t>(window, context);
 
-    auto [width, height] = window->dimensions();
+    gfx::helper::imgui_init(
+        *window, *context, base->_swapchain,
+        context
+            ->get_image(
+                context->get_swapchain(base->_swapchain).handle_images[0])
+            .config.vk_format);
 
     {
       gfx::config_buffer_t cb{};
@@ -109,6 +114,21 @@ struct renderer_t {
           *context, "./src/shaders/debug_draw.slang",
           gfx::shader_type_t::e_fragment);
       cp.add_shader(debug_draw_fragment);
+      VkPipelineRasterizationStateCreateInfo vk_pipeline_rasterization_state{};
+      vk_pipeline_rasterization_state.sType =
+          VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+      vk_pipeline_rasterization_state.depthClampEnable        = VK_FALSE;
+      vk_pipeline_rasterization_state.rasterizerDiscardEnable = VK_FALSE;
+      vk_pipeline_rasterization_state.polygonMode     = VK_POLYGON_MODE_FILL;
+      vk_pipeline_rasterization_state.lineWidth       = 1.0f;
+      vk_pipeline_rasterization_state.cullMode        = VK_CULL_MODE_NONE;
+      vk_pipeline_rasterization_state.frontFace       = VK_FRONT_FACE_CLOCKWISE;
+      vk_pipeline_rasterization_state.depthBiasEnable = VK_FALSE;
+      vk_pipeline_rasterization_state.depthBiasConstantFactor =
+          0.0f;                                                     // Optional
+      vk_pipeline_rasterization_state.depthBiasClamp       = 0.0f;  // Optional
+      vk_pipeline_rasterization_state.depthBiasSlopeFactor = 0.0f;  // Optional
+      cp.set_pipeline_rasterization_state(vk_pipeline_rasterization_state);
       debug_draw_pipeline = context->create_graphics_pipeline(cp);
     }
   }
@@ -120,6 +140,7 @@ struct renderer_t {
     context->destroy_pipeline_layout(pl);
     context->destroy_image_view(depth_view);
     context->destroy_image(depth);
+    gfx::helper::imgui_shutdown();
   }
 
   void render(ecs::scene_t<>& scene, const core::camera_t& camera) {
@@ -128,7 +149,7 @@ struct renderer_t {
             const core::transform_t& transform) {
           if (scene.has<model_t>(id)) return;
           // // NOTE: only for now
-          // raw_model      = model::merge_meshes(raw_model);
+          raw_model      = model::merge_meshes(raw_model);
           model_t& model = scene.construct<model_t>(id);
           for (auto raw_mesh : raw_model.meshes) {
             bvh::bvh_t bvh       = bvh::build_bvh(raw_mesh);
