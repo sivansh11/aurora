@@ -1,10 +1,14 @@
 #ifndef RENDERER_HPP
 #define RENDERER_HPP
 
+#include <cstddef>
 #include <cstring>
+#include <optional>
 
 #include "bvh/bvh.hpp"
 #include "horizon/core/components.hpp"
+#include "horizon/core/logger.hpp"
+#include "imgui.h"
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan_core.h>
 
@@ -76,12 +80,44 @@ struct renderer_t {
     ci.vk_width                    = width;
     ci.vk_height                   = height;
     ci.vk_depth                    = 1;
+    ci.vk_mips                     = 1;
     ci.vk_type                     = VK_IMAGE_TYPE_2D;
     ci.vma_allocation_create_flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    ci.vk_format                   = VK_FORMAT_D32_SFLOAT;
-    ci.vk_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depth       = context->create_image(ci);
-    depth_view  = context->create_image_view({.handle_image = depth});
+
+    ci.vk_format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    ci.vk_usage  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+    ci.debug_name = "image";
+    image         = context->create_image(ci);
+    image_view    = context->create_image_view({.handle_image = image});
+
+    ci.debug_name = "depth";
+    ci.vk_format  = VK_FORMAT_D32_SFLOAT;
+    ci.vk_usage   = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    depth         = context->create_image(ci);
+    depth_view    = context->create_image_view({.handle_image = depth});
+
+    image_width  = width;
+    image_height = height;
+
+    {
+      imgui_sampler = context->create_sampler({});
+      gfx::config_descriptor_set_layout_t cdsl{};
+      cdsl.add_layout_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                              VK_SHADER_STAGE_FRAGMENT_BIT);
+      cdsl.use_bindless = false;
+      imgui_dsl         = context->create_descriptor_set_layout(cdsl);
+      imgui_ds          = context->allocate_descriptor_set(
+          {.handle_descriptor_set_layout = imgui_dsl});
+      context->update_descriptor_set(imgui_ds)
+          .push_image_write(
+              0,
+              gfx::image_descriptor_info_t{
+                  .handle_sampler    = imgui_sampler,
+                  .handle_image_view = image_view,
+                  .vk_image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL})
+          .commit();
+    }
 
     gfx::config_pipeline_layout_t cpl{};
     cpl.add_push_constant(sizeof(shader::push_constant_t), VK_SHADER_STAGE_ALL);
@@ -90,12 +126,8 @@ struct renderer_t {
     {
       gfx::config_pipeline_t cp{};
       cp.handle_pipeline_layout = pl;
-      cp.add_color_attachment(
-          context
-              ->get_image(
-                  context->get_swapchain(base->_swapchain).handle_images[0])
-              .config.vk_format,
-          gfx::default_color_blend_attachment());
+      cp.add_color_attachment(context->get_image(image).config.vk_format,
+                              gfx::default_color_blend_attachment());
       cp.set_depth_attachment(
           VK_FORMAT_D32_SFLOAT,
           VkPipelineDepthStencilStateCreateInfo{
@@ -201,40 +233,57 @@ struct renderer_t {
 
     base->begin();
 
-    gfx::handle_commandbuffer_t cmd = base->current_commandbuffer();
-
-    context->cmd_image_memory_barrier(
-        cmd, base->current_swapchain_image(), VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, {},
-        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-    gfx::rendering_attachment_t color{};
-    color.handle_image_view = base->current_swapchain_image_view();
-    color.image_layout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    color.load_op           = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    color.store_op          = VK_ATTACHMENT_STORE_OP_STORE;
-    color.clear_value       = {0, 0, 0, 0};
-
-    gfx::rendering_attachment_t depth{};
-    depth.handle_image_view = depth_view;
-    depth.image_layout      = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    depth.load_op           = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depth.store_op          = VK_ATTACHMENT_STORE_OP_STORE;
-    depth.clear_value.depthStencil.depth = 1;
+    auto cmd = base->current_commandbuffer();
 
     auto [width, height] = window->dimensions();
-
-    VkRect2D vk_rect2d{};
-    vk_rect2d.extent.width  = width;
-    vk_rect2d.extent.height = height;
-
-    // begin rendering
     auto [viewport, scissor] =
         gfx::helper::fill_viewport_and_scissor_structs(width, height);
+
+    context->cmd_image_memory_barrier(
+        cmd, image,
+        VK_IMAGE_LAYOUT_UNDEFINED,                       //
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,        //
+        0,                                               //
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,            //
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,               //
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);  //
+
+    context->cmd_image_memory_barrier(
+        cmd, depth,
+        VK_IMAGE_LAYOUT_UNDEFINED,                         //
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,  //
+        0,                                                 //
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,      //
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,                 //
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |       //
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);    //
+
+    {
+      gfx::rendering_attachment_t rendering_attachment{};
+      rendering_attachment.handle_image_view = image_view;
+      rendering_attachment.image_layout =
+          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      rendering_attachment.load_op     = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      rendering_attachment.store_op    = VK_ATTACHMENT_STORE_OP_STORE;
+      rendering_attachment.clear_value = {0, 0, 0, 0};
+
+      gfx::rendering_attachment_t rendering_attachment_depth{};
+      rendering_attachment_depth.handle_image_view = depth_view;
+      rendering_attachment_depth.image_layout =
+          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      rendering_attachment_depth.load_op  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      rendering_attachment_depth.store_op = VK_ATTACHMENT_STORE_OP_STORE;
+      rendering_attachment_depth.clear_value.depthStencil.depth = 1;
+
+      VkRect2D vk_rect2d{};
+      vk_rect2d.extent.width  = image_width;
+      vk_rect2d.extent.height = image_height;
+
+      context->cmd_begin_rendering(cmd, {rendering_attachment},
+                                   rendering_attachment_depth, vk_rect2d);
+    }
     context->cmd_bind_pipeline(cmd, debug_draw_pipeline);
     context->cmd_set_viewport_and_scissor(cmd, viewport, scissor);
-    context->cmd_begin_rendering(cmd, {color}, depth, vk_rect2d);
     scene.for_all<model_t>([&](ecs::entity_id_t id, const model_t& model) {
       for (auto mesh : model.meshes) {
         shader::push_constant_t pc{};
@@ -246,22 +295,164 @@ struct renderer_t {
         pc.vertices    = context->get_buffer_device_address(mesh.vertices);
         pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
         context->cmd_push_constants(cmd, debug_draw_pipeline,
-                                    VK_SHADER_STAGE_ALL, 0,
-                                    sizeof(shader::push_constant_t), &pc);
+                                    VK_SHADER_STAGE_ALL, 0, sizeof(pc), &pc);
         context->cmd_draw(cmd, mesh.raw_index_count, 1, 0, 0);
       }
     });
     context->cmd_end_rendering(cmd);
-    // end rendering
+
+    context->cmd_image_memory_barrier(
+        cmd, image,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,       //
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,       //
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,           //
+        VK_ACCESS_SHADER_READ_BIT,                      //
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  //
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);         //
 
     context->cmd_image_memory_barrier(
         cmd, base->current_swapchain_image(),
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        {}, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+        VK_IMAGE_LAYOUT_UNDEFINED,                       //
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,        //
+        {},                                              //
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,            //
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,               //
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);  //
+
+    {
+      gfx::rendering_attachment_t rendering_attachment{};
+      rendering_attachment.handle_image_view =
+          base->current_swapchain_image_view();
+      rendering_attachment.image_layout =
+          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      rendering_attachment.load_op     = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      rendering_attachment.store_op    = VK_ATTACHMENT_STORE_OP_STORE;
+      rendering_attachment.clear_value = {0, 0, 0, 0};
+
+      VkRect2D vk_rect2d{};
+      vk_rect2d.extent.width  = width;
+      vk_rect2d.extent.height = height;
+
+      context->cmd_begin_rendering(cmd, {rendering_attachment}, std::nullopt,
+                                   vk_rect2d);
+    }
+
+    gfx::helper::imgui_newframe();
+
+    ImGuiDockNodeFlags dockspaceFlags =
+        ImGuiDockNodeFlags_None & ~ImGuiDockNodeFlags_PassthruCentralNode;
+    ImGuiWindowFlags windowFlags =
+        ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBackground |
+        ImGuiWindowFlags_NoDecoration;
+
+    bool dockSpace = true;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    auto mainViewPort = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(mainViewPort->WorkPos);
+    ImGui::SetNextWindowSize(mainViewPort->WorkSize);
+    ImGui::SetNextWindowViewport(mainViewPort->ID);
+
+    ImGui::Begin("DockSpace", &dockSpace, windowFlags);
+    ImGuiID dockspaceID = ImGui::GetID("DockSpace");
+    ImGui::DockSpace(dockspaceID, ImGui::GetContentRegionAvail(),
+                     dockspaceFlags);
+    static bool settings = true;
+    if (ImGui::BeginMainMenuBar()) {
+      if (ImGui::BeginMenu("menu")) {
+        if (ImGui::MenuItem("show settings", NULL, &settings)) {
+        }
+        ImGui::EndMenu();
+      }
+      ImGui::EndMainMenuBar();
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGuiWindowClass window_class;
+    window_class.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_AutoHideTabBar;
+    ImGui::SetNextWindowClass(&window_class);
+    ImGuiWindowFlags viewPortFlags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoDecoration;
+    ImGui::Begin("viewport", nullptr, viewPortFlags);
+    auto vp       = ImGui::GetWindowSize();
+    bool recreate = false;
+    if (image_width != vp.x || image_height != vp.y) {
+      recreate = true;
+    }
+    ImGui::Image(reinterpret_cast<ImTextureID>(reinterpret_cast<void*>(
+                     context->get_descriptor_set(imgui_ds).vk_descriptor_set)),
+                 ImGui::GetContentRegionAvail());
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+
+    if (settings) {
+      ImGui::Begin("settings", &settings);
+      ImGui::End();
+    }
+
+    gfx::helper::imgui_endframe(*context, cmd);
+
+    context->cmd_end_rendering(cmd);
+
+    context->cmd_image_memory_barrier(
+        cmd, base->current_swapchain_image(),
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,       //
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,                //
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,           //
+        {},                                             //
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  //
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);          //
 
     base->end();
+
+    if (recreate) {
+      context->wait_idle();
+
+      context->destroy_image(image);
+      context->destroy_image(depth);
+      context->destroy_image_view(image_view);
+      context->destroy_image_view(depth_view);
+
+      gfx::config_image_t ci{};
+      ci.vk_width  = vp.x;
+      ci.vk_height = vp.y;
+      ci.vk_depth  = 1;
+      ci.vk_mips   = 1;
+      ci.vk_type   = VK_IMAGE_TYPE_2D;
+      ci.vma_allocation_create_flags =
+          VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+
+      ci.vk_format = VK_FORMAT_R32G32B32A32_SFLOAT;
+      ci.vk_usage  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+      ci.debug_name = "image";
+      image         = context->create_image(ci);
+      image_view    = context->create_image_view({.handle_image = image});
+
+      ci.vk_format  = VK_FORMAT_D32_SFLOAT;
+      ci.vk_usage   = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+      ci.debug_name = "depth";
+      depth         = context->create_image(ci);
+      depth_view    = context->create_image_view({.handle_image = depth});
+
+      image_width  = vp.x;
+      image_height = vp.y;
+
+      context->update_descriptor_set(imgui_ds)
+          .push_image_write(
+              0,
+              gfx::image_descriptor_info_t{
+                  .handle_sampler    = imgui_sampler,
+                  .handle_image_view = image_view,
+                  .vk_image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL})
+          .commit();
+    }
   }
 
   core::ref<core::window_t> window;
@@ -270,8 +461,16 @@ struct renderer_t {
 
   gfx::handle_managed_buffer_t camera;
 
+  gfx::handle_sampler_t               imgui_sampler;
+  gfx::handle_descriptor_set_layout_t imgui_dsl;
+  gfx::handle_descriptor_set_t        imgui_ds;
+
+  gfx::handle_image_t      image;
+  gfx::handle_image_view_t image_view;
   gfx::handle_image_t      depth;
   gfx::handle_image_view_t depth_view;
+
+  uint32_t image_width, image_height;
 
   gfx::handle_pipeline_layout_t pl;
 
