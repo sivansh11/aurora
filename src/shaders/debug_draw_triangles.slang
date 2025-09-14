@@ -32,13 +32,22 @@ struct fragment_t {
 };
 
 float3 random_color_from_id(uint32_t v) {
-  return {(((v + 1) * 123) % 255) / 255.f, (((v + 1) * 456) % 255) / 255.f,
-          (((v + 1) * 789) % 255) / 255.f};
+  return {(((v * 123) % 255) + 1) / 255.f, 
+          (((v * 456) % 255) + 1) / 255.f,
+          (((v * 789) % 255) + 1) / 255.f};
+}
+
+float3 muted(float3 color, float factor) {
+  float3 muted = color * factor;
+  float len = length(muted);
+  if (len > 0) 
+    muted /= len;
+  return muted;
 }
 
 [shader("fragment")]
 fragment_t fragment_main(uint32_t id) {
   fragment_t fragment;
-  fragment.color = float4(random_color_from_id(id), 1); 
+  fragment.color = float4(muted(random_color_from_id(id), 0.1), 1); 
   return fragment;
 }
