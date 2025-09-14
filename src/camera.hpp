@@ -27,8 +27,7 @@ class editor_camera_t : public core::camera_t {
     }
   }
 
-  void update(float dt) {
-    auto [width, height] = _window.dimensions();
+  void update(float dt, float width, float height) {
     update_projection(float(width) / float(height));
 
     double curX, curY;

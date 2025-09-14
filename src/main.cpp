@@ -32,7 +32,8 @@ int main(int argc, char **argv) {
 
     core::timer::duration_t dt            = frame_timer.update();
     editor_camera.camera_speed_multiplyer = renderer->camera_speed;
-    editor_camera.update(dt.count());
+    editor_camera.update(dt.count(), renderer->image_width,
+                         renderer->image_height);
 
     renderer->render(scene, editor_camera);
   }
