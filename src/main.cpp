@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
         renderer->window->get_key_pressed(GLFW_KEY_ESCAPE))
       break;
 
-    core::timer::duration_t dt = frame_timer.update();
+    core::timer::duration_t dt            = frame_timer.update();
     editor_camera.camera_speed_multiplyer = renderer->camera_speed;
     editor_camera.update(dt.count());
 
