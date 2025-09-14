@@ -47,6 +47,7 @@ struct push_constant_t {
   VkDeviceAddress bvh_triangles;
   VkDeviceAddress vertices;
   VkDeviceAddress raw_indices;
+  VkDeviceAddress nodes;
 };
 static_assert(sizeof(push_constant_t) <= 128,
               "sizeof(push_constant_t) should be less than= 128");
@@ -138,14 +139,14 @@ struct renderer_t {
               .depthCompareOp    = VK_COMPARE_OP_LESS,
               .stencilTestEnable = VK_FALSE,
           });
-      debug_draw_vertex = gfx::helper::create_slang_shader(
-          *context, "./src/shaders/debug_draw.slang",
+      debug_draw_triangles_vertex = gfx::helper::create_slang_shader(
+          *context, "./src/shaders/debug_draw_triangles.slang",
           gfx::shader_type_t::e_vertex);
-      cp.add_shader(debug_draw_vertex);
-      debug_draw_fragment = gfx::helper::create_slang_shader(
-          *context, "./src/shaders/debug_draw.slang",
+      cp.add_shader(debug_draw_triangles_vertex);
+      debug_draw_triangles_fragment = gfx::helper::create_slang_shader(
+          *context, "./src/shaders/debug_draw_triangles.slang",
           gfx::shader_type_t::e_fragment);
-      cp.add_shader(debug_draw_fragment);
+      cp.add_shader(debug_draw_triangles_fragment);
       VkPipelineRasterizationStateCreateInfo vk_pipeline_rasterization_state{};
       vk_pipeline_rasterization_state.sType =
           VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -161,14 +162,60 @@ struct renderer_t {
       vk_pipeline_rasterization_state.depthBiasClamp       = 0.0f;  // Optional
       vk_pipeline_rasterization_state.depthBiasSlopeFactor = 0.0f;  // Optional
       cp.set_pipeline_rasterization_state(vk_pipeline_rasterization_state);
-      debug_draw_pipeline = context->create_graphics_pipeline(cp);
+      debug_draw_triangles_pipeline = context->create_graphics_pipeline(cp);
+    }
+    {
+      gfx::config_pipeline_t cp{};
+      cp.handle_pipeline_layout = pl;
+      cp.add_color_attachment(context->get_image(image).config.vk_format,
+                              gfx::default_color_blend_attachment());
+      cp.set_depth_attachment(
+          VK_FORMAT_D32_SFLOAT,
+          VkPipelineDepthStencilStateCreateInfo{
+              .sType =
+                  VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+              .depthTestEnable   = VK_TRUE,
+              .depthWriteEnable  = VK_TRUE,
+              .depthCompareOp    = VK_COMPARE_OP_LESS,
+              .stencilTestEnable = VK_FALSE,
+          });
+      debug_draw_nodes_vertex = gfx::helper::create_slang_shader(
+          *context, "./src/shaders/debug_draw_nodes.slang",
+          gfx::shader_type_t::e_vertex);
+      cp.add_shader(debug_draw_nodes_vertex);
+      debug_draw_nodes_fragment = gfx::helper::create_slang_shader(
+          *context, "./src/shaders/debug_draw_nodes.slang",
+          gfx::shader_type_t::e_fragment);
+      cp.add_shader(debug_draw_nodes_fragment);
+      VkPipelineRasterizationStateCreateInfo vk_pipeline_rasterization_state{};
+      vk_pipeline_rasterization_state.sType =
+          VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+      vk_pipeline_rasterization_state.depthClampEnable        = VK_FALSE;
+      vk_pipeline_rasterization_state.rasterizerDiscardEnable = VK_FALSE;
+      vk_pipeline_rasterization_state.polygonMode     = VK_POLYGON_MODE_LINE;
+      vk_pipeline_rasterization_state.lineWidth       = 1.0f;
+      vk_pipeline_rasterization_state.cullMode        = VK_CULL_MODE_NONE;
+      vk_pipeline_rasterization_state.frontFace       = VK_FRONT_FACE_CLOCKWISE;
+      vk_pipeline_rasterization_state.depthBiasEnable = VK_FALSE;
+      vk_pipeline_rasterization_state.depthBiasConstantFactor =
+          0.0f;                                                     // Optional
+      vk_pipeline_rasterization_state.depthBiasClamp       = 0.0f;  // Optional
+      vk_pipeline_rasterization_state.depthBiasSlopeFactor = 0.0f;  // Optional
+      cp.set_pipeline_rasterization_state(vk_pipeline_rasterization_state);
+      VkPipelineInputAssemblyStateCreateInfo vk_pipeline_input_assembly_state{};
+      vk_pipeline_input_assembly_state.sType =
+          VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+      vk_pipeline_input_assembly_state.topology =
+          VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+      cp.set_pipeline_input_assembly_state(vk_pipeline_input_assembly_state);
+      debug_draw_nodes_pipeline = context->create_graphics_pipeline(cp);
     }
   }
   ~renderer_t() {
     context->wait_idle();
-    context->destroy_pipeline(debug_draw_pipeline);
-    context->destroy_shader(debug_draw_fragment);
-    context->destroy_shader(debug_draw_vertex);
+    context->destroy_pipeline(debug_draw_triangles_pipeline);
+    context->destroy_shader(debug_draw_triangles_fragment);
+    context->destroy_shader(debug_draw_triangles_vertex);
     context->destroy_pipeline_layout(pl);
     context->destroy_image_view(depth_view);
     context->destroy_image(depth);
@@ -282,23 +329,48 @@ struct renderer_t {
       context->cmd_begin_rendering(cmd, {rendering_attachment},
                                    rendering_attachment_depth, vk_rect2d);
     }
-    context->cmd_bind_pipeline(cmd, debug_draw_pipeline);
-    context->cmd_set_viewport_and_scissor(cmd, viewport, scissor);
-    scene.for_all<model_t>([&](ecs::entity_id_t id, const model_t& model) {
-      for (auto mesh : model.meshes) {
-        shader::push_constant_t pc{};
-        pc.camera =
-            context->get_buffer_device_address(base->buffer(this->camera));
-        pc.transform = context->get_buffer_device_address(mesh.transform);
-        pc.bvh_triangles =
-            context->get_buffer_device_address(mesh.bvh_triangles);
-        pc.vertices    = context->get_buffer_device_address(mesh.vertices);
-        pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
-        context->cmd_push_constants(cmd, debug_draw_pipeline,
-                                    VK_SHADER_STAGE_ALL, 0, sizeof(pc), &pc);
-        context->cmd_draw(cmd, mesh.raw_index_count, 1, 0, 0);
-      }
-    });
+    static bool debug_triangle = true;
+    static bool debug_node     = false;
+    if (debug_triangle) {
+      context->cmd_bind_pipeline(cmd, debug_draw_triangles_pipeline);
+      context->cmd_set_viewport_and_scissor(cmd, viewport, scissor);
+      scene.for_all<model_t>([&](ecs::entity_id_t id, const model_t& model) {
+        for (auto mesh : model.meshes) {
+          shader::push_constant_t pc{};
+          pc.camera =
+              context->get_buffer_device_address(base->buffer(this->camera));
+          pc.transform = context->get_buffer_device_address(mesh.transform);
+          pc.bvh_triangles =
+              context->get_buffer_device_address(mesh.bvh_triangles);
+          pc.vertices    = context->get_buffer_device_address(mesh.vertices);
+          pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
+          pc.nodes       = context->get_buffer_device_address(mesh.nodes);
+          context->cmd_push_constants(cmd, debug_draw_triangles_pipeline,
+                                      VK_SHADER_STAGE_ALL, 0, sizeof(pc), &pc);
+          context->cmd_draw(cmd, mesh.raw_index_count, 1, 0, 0);
+        }
+      });
+    }
+    if (debug_node) {
+      context->cmd_bind_pipeline(cmd, debug_draw_nodes_pipeline);
+      context->cmd_set_viewport_and_scissor(cmd, viewport, scissor);
+      scene.for_all<model_t>([&](ecs::entity_id_t id, const model_t& model) {
+        for (auto mesh : model.meshes) {
+          shader::push_constant_t pc{};
+          pc.camera =
+              context->get_buffer_device_address(base->buffer(this->camera));
+          pc.transform = context->get_buffer_device_address(mesh.transform);
+          pc.bvh_triangles =
+              context->get_buffer_device_address(mesh.bvh_triangles);
+          pc.vertices    = context->get_buffer_device_address(mesh.vertices);
+          pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
+          pc.nodes       = context->get_buffer_device_address(mesh.nodes);
+          context->cmd_push_constants(cmd, debug_draw_nodes_pipeline,
+                                      VK_SHADER_STAGE_ALL, 0, sizeof(pc), &pc);
+          context->cmd_draw(cmd, mesh.node_count * 24, 1, 0, 0);
+        }
+      });
+    }
     context->cmd_end_rendering(cmd);
 
     context->cmd_image_memory_barrier(
@@ -393,6 +465,10 @@ struct renderer_t {
 
     if (settings) {
       ImGui::Begin("settings", &settings);
+      ImGui::Checkbox("debug triangle", &debug_triangle);
+      ImGui::Checkbox("debug node", &debug_node);
+      ImGui::NewLine();
+      ImGui::SliderFloat("camera speed", &camera_speed, 0.001, 10);
       ImGui::End();
     }
 
@@ -460,6 +536,7 @@ struct renderer_t {
   core::ref<gfx::base_t>    base;
 
   gfx::handle_managed_buffer_t camera;
+  float                        camera_speed = 1.f;
 
   gfx::handle_sampler_t               imgui_sampler;
   gfx::handle_descriptor_set_layout_t imgui_dsl;
@@ -474,10 +551,13 @@ struct renderer_t {
 
   gfx::handle_pipeline_layout_t pl;
 
-  gfx::handle_shader_t debug_draw_vertex;
-  gfx::handle_shader_t debug_draw_fragment;
+  gfx::handle_shader_t   debug_draw_triangles_vertex;
+  gfx::handle_shader_t   debug_draw_triangles_fragment;
+  gfx::handle_pipeline_t debug_draw_triangles_pipeline;
 
-  gfx::handle_pipeline_t debug_draw_pipeline;
+  gfx::handle_shader_t   debug_draw_nodes_vertex;
+  gfx::handle_shader_t   debug_draw_nodes_fragment;
+  gfx::handle_pipeline_t debug_draw_nodes_pipeline;
 };
 
 #endif
