@@ -22,76 +22,76 @@ vertex_stage_output_t vertex_main(uint32_t id: SV_VertexID) {
 
   switch (vertex_index) {
     case 0:
-      final_p = {node.aabbMin.x, node.aabbMin.y, node.aabbMin.z};
+      final_p = {node.min.x, node.min.y, node.min.z};
     break;
     case 1:
-      final_p = {node.aabbMax.x, node.aabbMin.y, node.aabbMin.z};
+      final_p = {node.max.x, node.min.y, node.min.z};
     break;
     case 2:
-      final_p = {node.aabbMax.x, node.aabbMin.y, node.aabbMin.z};
+      final_p = {node.max.x, node.min.y, node.min.z};
     break;
     case 3:
-      final_p = {node.aabbMax.x, node.aabbMax.y, node.aabbMin.z};
+      final_p = {node.max.x, node.max.y, node.min.z};
     break;
     case 4:
-      final_p = {node.aabbMax.x, node.aabbMax.y, node.aabbMin.z};
+      final_p = {node.max.x, node.max.y, node.min.z};
     break;
     case 5:
-      final_p = {node.aabbMin.x, node.aabbMax.y, node.aabbMin.z};
+      final_p = {node.min.x, node.max.y, node.min.z};
     break;
     case 6:
-      final_p = {node.aabbMin.x, node.aabbMax.y, node.aabbMin.z};
+      final_p = {node.min.x, node.max.y, node.min.z};
     break;
     case 7:
-      final_p = {node.aabbMin.x, node.aabbMin.y, node.aabbMin.z};
+      final_p = {node.min.x, node.min.y, node.min.z};
     break;
     case 8:
-      final_p = {node.aabbMin.x, node.aabbMin.y, node.aabbMax.z};
+      final_p = {node.min.x, node.min.y, node.max.z};
     break;
     case 9:
-      final_p = {node.aabbMax.x, node.aabbMin.y, node.aabbMax.z};
+      final_p = {node.max.x, node.min.y, node.max.z};
     break;
     case 10:
-      final_p = {node.aabbMax.x, node.aabbMin.y, node.aabbMax.z};
+      final_p = {node.max.x, node.min.y, node.max.z};
     break;
     case 11:
-      final_p = {node.aabbMax.x, node.aabbMax.y, node.aabbMax.z};
+      final_p = {node.max.x, node.max.y, node.max.z};
     break;
     case 12:
-      final_p = {node.aabbMax.x, node.aabbMax.y, node.aabbMax.z};
+      final_p = {node.max.x, node.max.y, node.max.z};
     break;
     case 13:
-      final_p = {node.aabbMin.x, node.aabbMax.y, node.aabbMax.z};;
+      final_p = {node.min.x, node.max.y, node.max.z};;
     break;
     case 14:
-      final_p = {node.aabbMin.x, node.aabbMax.y, node.aabbMax.z};;
+      final_p = {node.min.x, node.max.y, node.max.z};;
     break;
     case 15:
-      final_p = {node.aabbMin.x, node.aabbMin.y, node.aabbMax.z};
+      final_p = {node.min.x, node.min.y, node.max.z};
     break;
     case 16:
-      final_p = {node.aabbMin.x, node.aabbMin.y, node.aabbMin.z};
+      final_p = {node.min.x, node.min.y, node.min.z};
     break;
     case 17:
-      final_p = {node.aabbMin.x, node.aabbMin.y, node.aabbMax.z};
+      final_p = {node.min.x, node.min.y, node.max.z};
     break;
     case 18:
-      final_p = {node.aabbMax.x, node.aabbMin.y, node.aabbMin.z};
+      final_p = {node.max.x, node.min.y, node.min.z};
     break;
     case 19:
-      final_p = {node.aabbMax.x, node.aabbMin.y, node.aabbMax.z};
+      final_p = {node.max.x, node.min.y, node.max.z};
     break;
     case 20:
-      final_p = {node.aabbMax.x, node.aabbMax.y, node.aabbMin.z};
+      final_p = {node.max.x, node.max.y, node.min.z};
     break;
     case 21:
-      final_p = {node.aabbMax.x, node.aabbMax.y, node.aabbMax.z};
+      final_p = {node.max.x, node.max.y, node.max.z};
     break;
     case 22:
-      final_p = {node.aabbMin.x, node.aabbMax.y, node.aabbMin.z};
+      final_p = {node.min.x, node.max.y, node.min.z};
     break;
     case 23:
-      final_p = {node.aabbMin.x, node.aabbMax.y, node.aabbMax.z};;
+      final_p = {node.min.x, node.max.y, node.max.z};;
     break;
   }
 

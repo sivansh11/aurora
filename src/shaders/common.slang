@@ -22,10 +22,10 @@ struct vertex_t {
 };
 
 struct node_t {
-  float3 aabbMin;
-  uint32_t leftFirst; // 16 bytes
-  float3 aabbMax;
-  uint32_t triCount; // 16 bytes, total: 32 bytes
+  float3 min;
+  uint32_t left_first; // 16 bytes
+  float3 max;
+  uint32_t prim_count; // 16 bytes, total: 32 bytes
 };
 
 struct push_constant_t {
