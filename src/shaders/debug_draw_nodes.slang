@@ -98,7 +98,7 @@ vertex_stage_output_t vertex_main(uint32_t id: SV_VertexID) {
   o.sv_position = float4(final_p, 1);
 
   o.sv_position = 
-    mul(mul(mul(o.sv_position, *pc.transform), pc.camera.view), pc.camera.projection);
+    mul(mul(o.sv_position, pc.camera.view), pc.camera.projection);
 
   return o;
 }

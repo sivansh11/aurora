@@ -4,7 +4,6 @@
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 
-#include "glm/trigonometric.hpp"
 #include "horizon/core/components.hpp"
 #include "horizon/core/core.hpp"
 #include "horizon/core/window.hpp"
@@ -13,6 +12,7 @@
 class editor_camera_t : public core::camera_t {
  public:
   editor_camera_t(core::window_t &window) : _window(window) {
+    inv_view[3]          = math::vec4{-1, 0, 0, 0};
     auto [width, height] = _window.dimensions();
     update_projection(float(width) / float(height));
   }

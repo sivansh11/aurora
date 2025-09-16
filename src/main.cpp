@@ -19,7 +19,7 @@ int main(int argc, char **argv) {
     auto id = scene.create();
     scene.construct<model::raw_model_t>(id) =
         model::load_model_from_path(argv[3]);
-    scene.construct<core::transform_t>(id).scale = {0.1, 0.1, 0.1};
+    scene.construct<core::transform_t>(id);  // .scale = {0.1, 0.1, 0.1};
   }
 
   core::frame_timer_t frame_timer{60.f};
