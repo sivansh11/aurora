@@ -34,6 +34,9 @@ struct mesh_t {
   uint32_t node_count;  // triangles and bvh_index count is raw_index_count / 3
 
   gfx::handle_buffer_t transform;
+
+  uint32_t depth_of_bvh;
+  float    cost_of_bvh;
 };
 
 struct model_t {
@@ -284,6 +287,8 @@ struct renderer_t {
           for (auto raw_mesh : raw_model.meshes) {
             bvh::bvh_t bvh       = bvh::build_bvh(raw_mesh);
             mesh_t&    mesh      = model.meshes.emplace_back();
+            mesh.depth_of_bvh    = bvh::depth_of_bvh(bvh);
+            mesh.cost_of_bvh     = bvh::cost_of_bvh(bvh);
             mesh.vertex_count    = raw_mesh.vertices.size();
             mesh.raw_index_count = raw_mesh.indices.size();
             mesh.node_count      = bvh.nodes.size();
@@ -401,7 +406,8 @@ struct renderer_t {
           pc.transform = context->get_buffer_device_address(mesh.transform);
           pc.bvh_triangles =
               context->get_buffer_device_address(mesh.bvh_triangles);
-          pc.bvh_prim_indices = context->get_buffer_device_address(mesh.bvh_prim_indices);
+          pc.bvh_prim_indices =
+              context->get_buffer_device_address(mesh.bvh_prim_indices);
           pc.vertices    = context->get_buffer_device_address(mesh.vertices);
           pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
@@ -432,7 +438,8 @@ struct renderer_t {
           pc.transform = context->get_buffer_device_address(mesh.transform);
           pc.bvh_triangles =
               context->get_buffer_device_address(mesh.bvh_triangles);
-          pc.bvh_prim_indices = context->get_buffer_device_address(mesh.bvh_prim_indices);
+          pc.bvh_prim_indices =
+              context->get_buffer_device_address(mesh.bvh_prim_indices);
           pc.vertices    = context->get_buffer_device_address(mesh.vertices);
           pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
@@ -540,7 +547,8 @@ struct renderer_t {
           pc.transform = context->get_buffer_device_address(mesh.transform);
           pc.bvh_triangles =
               context->get_buffer_device_address(mesh.bvh_triangles);
-          pc.bvh_prim_indices = context->get_buffer_device_address(mesh.bvh_prim_indices);
+          pc.bvh_prim_indices =
+              context->get_buffer_device_address(mesh.bvh_prim_indices);
           pc.vertices    = context->get_buffer_device_address(mesh.vertices);
           pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
@@ -573,7 +581,8 @@ struct renderer_t {
           pc.transform = context->get_buffer_device_address(mesh.transform);
           pc.bvh_triangles =
               context->get_buffer_device_address(mesh.bvh_triangles);
-          pc.bvh_prim_indices = context->get_buffer_device_address(mesh.bvh_prim_indices);
+          pc.bvh_prim_indices =
+              context->get_buffer_device_address(mesh.bvh_prim_indices);
           pc.vertices    = context->get_buffer_device_address(mesh.vertices);
           pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
@@ -699,13 +708,18 @@ struct renderer_t {
       ImGui::DragInt("triangles_intersections_normalize",
                      &triangles_intersections_normalize);
       ImGui::NewLine();
-      ImGui::SliderFloat("camera speed", &camera_speed, 0.001, 10);
+      ImGui::DragFloat("camera speed", &camera_speed, 0.01);
 
       scene.for_all<model_t>([&](ecs::entity_id_t id, const model_t& model) {
         for (auto mesh : model.meshes) {
           ImGui::Text("node_count: %u", mesh.node_count);
+          ImGui::Text("depth_of_bvh: %u", mesh.depth_of_bvh);
+          ImGui::Text("sah: %f", mesh.cost_of_bvh);
         }
       });
+
+      ImGui::NewLine();
+      ImGui::Text("framerate: %f", ImGui::GetIO().Framerate);
       ImGui::End();
     }
 
