@@ -103,7 +103,7 @@ struct push_constant_t {
   camera_t *camera;
   float4x4 *transform;
   bvh_triangle_t *bvh_triangles;
-  uint32_t *bvh_indices;
+  uint32_t *bvh_prim_indices;
   vertex_t *vertices;
   uint32_t *raw_indices;
   node_t *nodes;

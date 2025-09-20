@@ -30,7 +30,7 @@ struct mesh_t {
 
   gfx::handle_buffer_t nodes;
   gfx::handle_buffer_t bvh_triangles;
-  gfx::handle_buffer_t bvh_indices;
+  gfx::handle_buffer_t bvh_prim_indices;
   uint32_t node_count;  // triangles and bvh_index count is raw_index_count / 3
 
   gfx::handle_buffer_t transform;
@@ -46,7 +46,7 @@ struct push_constant_t {
   VkDeviceAddress camera;
   VkDeviceAddress transform;
   VkDeviceAddress bvh_triangles;
-  VkDeviceAddress bvh_indices;
+  VkDeviceAddress bvh_prim_indices;
   VkDeviceAddress vertices;
   VkDeviceAddress raw_indices;
   VkDeviceAddress nodes;
@@ -310,9 +310,9 @@ struct renderer_t {
             mesh.bvh_triangles = gfx::helper::create_buffer_staged(
                 *context, base->_command_pool, cb, bvh.triangles.data(),
                 cb.vk_size);
-            cb.vk_size       = bvh.indices.size() * sizeof(bvh.indices[0]);
-            mesh.bvh_indices = gfx::helper::create_buffer_staged(
-                *context, base->_command_pool, cb, bvh.indices.data(),
+            cb.vk_size = bvh.prim_indices.size() * sizeof(bvh.prim_indices[0]);
+            mesh.bvh_prim_indices = gfx::helper::create_buffer_staged(
+                *context, base->_command_pool, cb, bvh.prim_indices.data(),
                 cb.vk_size);
 
             cb.vma_allocation_create_flags =
@@ -401,7 +401,7 @@ struct renderer_t {
           pc.transform = context->get_buffer_device_address(mesh.transform);
           pc.bvh_triangles =
               context->get_buffer_device_address(mesh.bvh_triangles);
-          pc.bvh_indices = context->get_buffer_device_address(mesh.bvh_indices);
+          pc.bvh_prim_indices = context->get_buffer_device_address(mesh.bvh_prim_indices);
           pc.vertices    = context->get_buffer_device_address(mesh.vertices);
           pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
@@ -432,7 +432,7 @@ struct renderer_t {
           pc.transform = context->get_buffer_device_address(mesh.transform);
           pc.bvh_triangles =
               context->get_buffer_device_address(mesh.bvh_triangles);
-          pc.bvh_indices = context->get_buffer_device_address(mesh.bvh_indices);
+          pc.bvh_prim_indices = context->get_buffer_device_address(mesh.bvh_prim_indices);
           pc.vertices    = context->get_buffer_device_address(mesh.vertices);
           pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
@@ -467,8 +467,8 @@ struct renderer_t {
             pc.transform = context->get_buffer_device_address(mesh.transform);
             pc.bvh_triangles =
                 context->get_buffer_device_address(mesh.bvh_triangles);
-            pc.bvh_indices =
-                context->get_buffer_device_address(mesh.bvh_indices);
+            pc.bvh_prim_indices =
+                context->get_buffer_device_address(mesh.bvh_prim_indices);
             pc.vertices = context->get_buffer_device_address(mesh.vertices);
             pc.raw_indices =
                 context->get_buffer_device_address(mesh.raw_indices);
@@ -505,8 +505,8 @@ struct renderer_t {
             pc.transform = context->get_buffer_device_address(mesh.transform);
             pc.bvh_triangles =
                 context->get_buffer_device_address(mesh.bvh_triangles);
-            pc.bvh_indices =
-                context->get_buffer_device_address(mesh.bvh_indices);
+            pc.bvh_prim_indices =
+                context->get_buffer_device_address(mesh.bvh_prim_indices);
             pc.vertices = context->get_buffer_device_address(mesh.vertices);
             pc.raw_indices =
                 context->get_buffer_device_address(mesh.raw_indices);
@@ -540,7 +540,7 @@ struct renderer_t {
           pc.transform = context->get_buffer_device_address(mesh.transform);
           pc.bvh_triangles =
               context->get_buffer_device_address(mesh.bvh_triangles);
-          pc.bvh_indices = context->get_buffer_device_address(mesh.bvh_indices);
+          pc.bvh_prim_indices = context->get_buffer_device_address(mesh.bvh_prim_indices);
           pc.vertices    = context->get_buffer_device_address(mesh.vertices);
           pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
@@ -573,7 +573,7 @@ struct renderer_t {
           pc.transform = context->get_buffer_device_address(mesh.transform);
           pc.bvh_triangles =
               context->get_buffer_device_address(mesh.bvh_triangles);
-          pc.bvh_indices = context->get_buffer_device_address(mesh.bvh_indices);
+          pc.bvh_prim_indices = context->get_buffer_device_address(mesh.bvh_prim_indices);
           pc.vertices    = context->get_buffer_device_address(mesh.vertices);
           pc.raw_indices = context->get_buffer_device_address(mesh.raw_indices);
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
