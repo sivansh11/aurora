@@ -51,17 +51,10 @@ struct hit_t {
   uint32_t prim_index = null_index;
   float t = 1e30;
   float u, v;
-};
-
-struct debug_hit_t {
-  bool did_intersect() {
-    return prim_index != null_index;
-  }
-  uint32_t prim_index = null_index;
-  float t = 1e30;
-  float u, v;
+#ifdef DEBUG_HIT
   uint32_t node_intersections = 0;
   uint32_t triangle_intersections = 0;
+#endif
 };
 
 float safe_inverse(float x) {

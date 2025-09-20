@@ -1,3 +1,4 @@
+#define DEBUG_HIT
 #include "intersect.slang"
 
 [vk::push_constant]
@@ -33,7 +34,7 @@ void compute_main(uint3 dispatch_thread_id : SV_DispatchThreadID, uint group_ind
 
   ray_t ray = ray_t::create(float2(u, v), pc.camera->inv_projection, pc.camera->inv_view);
 
-  debug_hit_t hit = intersect_bvh_debug(pc.nodes, pc.bvh_prim_indices, pc.bvh_triangles, ray, group_index);
+  hit_t hit = intersect_bvh(pc.nodes, pc.bvh_prim_indices, pc.bvh_triangles, ray, group_index);
 
   if (hit.did_intersect()) {
     if (all(rwtextures[pc.bindless_image][uint2(dispatch_thread_id.x, dispatch_thread_id.y)].xyzw == float4(0)))
