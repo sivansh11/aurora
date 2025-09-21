@@ -1,4 +1,5 @@
 #define DEBUG_HIT
+// #define DONT_COMBINE_LEAF_PRIMITIVE_INTERSECTIONS
 #include "intersect.slang"
 
 [vk::push_constant]
@@ -36,11 +37,9 @@ void compute_main(uint3 dispatch_thread_id : SV_DispatchThreadID, uint group_ind
 
   hit_t hit = intersect_bvh(pc.nodes, pc.bvh_prim_indices, pc.bvh_triangles, ray, group_index);
 
-  if (hit.did_intersect()) {
-    if (all(rwtextures[pc.bindless_image][uint2(dispatch_thread_id.x, dispatch_thread_id.y)].xyzw == float4(0)))
-      rwtextures[pc.bindless_image][uint2(dispatch_thread_id.x, dispatch_thread_id.y)] = float4(float(hit.node_intersections) / float(pc.nodes_intersections_normalize), 
-                                                                                                float(hit.triangle_intersections) / float(pc.triangles_intersections_normalize), 
-                                                                                                0, 
+  if (all(rwtextures[pc.bindless_image][uint2(dispatch_thread_id.x, dispatch_thread_id.y)].xyzw == float4(0)))
+    rwtextures[pc.bindless_image][uint2(dispatch_thread_id.x, dispatch_thread_id.y)] = float4(float(hit.node_intersections) / float(pc.nodes_intersections_normalize), 
+                                                                                              float(hit.triangle_intersections) / float(pc.triangles_intersections_normalize), 
+                                                                                              0, 
                                                                                                 1);
-  }
 }
