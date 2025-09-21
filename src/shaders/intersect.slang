@@ -87,6 +87,7 @@ hit_t intersect_bvh(node_t *nodes, uint32_t *indices, bvh_triangle_t *triangles,
     aabb_hit_t left_hit = intersect_aabb(left.min, left.max, ray);
     aabb_hit_t right_hit = intersect_aabb(right.min, right.max, ray);
 
+#ifndef DONT_COMBINE_LEAF_PRIMITIVE_INTERSECTIONS
     uint32_t start = 0;
     uint32_t end = 0;
     if (left_hit.did_intersect() && left.is_leaf()) {
@@ -118,6 +119,42 @@ hit_t intersect_bvh(node_t *nodes, uint32_t *indices, bvh_triangle_t *triangles,
         hit.v = triangle_hit.v;
       }
     }
+#else
+    if (left_hit.did_intersect() && left.is_leaf()) {
+      for (uint32_t i = 0; i < left.prim_count; i++) {
+      const uint32_t triangle_index = indices[left.first_index + i];
+        const bvh_triangle_t triangle = triangles[triangle_index];
+        triangle_hit_t triangle_hit = intersect_triangle(triangle, ray);
+#ifdef DEBUG_HIT
+        hit.triangle_intersections++;
+#endif
+        if (triangle_hit.did_intersect()) {
+          ray.tmax = triangle_hit.t;
+          hit.prim_index = triangle_index;
+          hit.t = triangle_hit.t;
+          hit.u = triangle_hit.u;
+          hit.v = triangle_hit.v;
+        }
+      }
+    }
+    if (right_hit.did_intersect() && right.is_leaf()) {
+      for (uint32_t i = 0; i < right.prim_count; i++) {
+      const uint32_t triangle_index = indices[right.first_index + i];
+        const bvh_triangle_t triangle = triangles[triangle_index];
+        triangle_hit_t triangle_hit = intersect_triangle(triangle, ray);
+#ifdef DEBUG_HIT
+        hit.triangle_intersections++;
+#endif
+        if (triangle_hit.did_intersect()) {
+          ray.tmax = triangle_hit.t;
+          hit.prim_index = triangle_index;
+          hit.t = triangle_hit.t;
+          hit.u = triangle_hit.u;
+          hit.v = triangle_hit.v;
+        }
+      }
+    }
+#endif
 
     if (left_hit.did_intersect() && !left.is_leaf()) {
       if (right_hit.did_intersect() && !right.is_leaf()) {
