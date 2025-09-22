@@ -106,5 +106,5 @@ struct push_constant_t {
   uint32_t raw_index_count;
   uint32_t bindless_image;
   uint32_t node_count;
-  uint32_t normalization_constant
+  uint32_t normalization_constant;
 };
