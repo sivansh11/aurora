@@ -357,11 +357,21 @@ struct renderer_t {
     std::memcpy(context->map_buffer(base->buffer(this->camera)), &camera,
                 sizeof(camera));
 
+    auto [width, height] = window->dimensions();
+
+    static int s_width  = width;
+    static int s_height = height;
+
+    if (s_width != width || s_height != height) {
+      base->resize_swapchain();
+      s_width  = width;
+      s_height = height;
+    }
+
     base->begin();
 
     auto cmd = base->current_commandbuffer();
 
-    auto [width, height]     = window->dimensions();
     auto [viewport, scissor] = gfx::helper::fill_viewport_and_scissor_structs(
         image_width, image_height);
 
