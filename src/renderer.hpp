@@ -627,14 +627,15 @@ struct renderer_t {
           cmd, base->timer(debug_trace_primary_intersections_timer));
     }
 
-    // context->cmd_image_memory_barrier(
-    //     cmd, image,
-    //     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,       //
-    //     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,       //
-    //     VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,           //
-    //     VK_ACCESS_SHADER_READ_BIT,                      //
-    //     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  //
-    //     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);         //
+    context->cmd_image_memory_barrier(
+        cmd, image,
+        VK_IMAGE_LAYOUT_GENERAL,     //
+        VK_IMAGE_LAYOUT_GENERAL,     //
+        VK_ACCESS_SHADER_WRITE_BIT,  //
+        VK_ACCESS_SHADER_READ_BIT,   //
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,  //
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);     //
 
     context->cmd_image_memory_barrier(
         cmd, base->current_swapchain_image(),
