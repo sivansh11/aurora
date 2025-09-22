@@ -1,9 +1,11 @@
 #ifndef RENDERER_HPP
 #define RENDERER_HPP
 
+#include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <optional>
+#include <thread>
 
 #include "bvh/bvh.hpp"
 #include "glm/common.hpp"
@@ -59,8 +61,7 @@ struct push_constant_t {
   uint32_t raw_index_count;
   uint32_t bindless_image;
   uint32_t node_count;
-  uint32_t nodes_intersections_normalize;
-  uint32_t triangles_intersections_normalize;
+  uint32_t normalization_constant;
 };
 static_assert(sizeof(push_constant_t) <= 128,
               "sizeof(push_constant_t) should be less than= 128");
@@ -68,7 +69,8 @@ static_assert(sizeof(push_constant_t) <= 128,
 }  // namespace shader
 
 struct renderer_t {
-  renderer_t(uint32_t width, uint32_t height) {
+  renderer_t(uint32_t width, uint32_t height, bool presplitting, bool ploc)
+      : presplitting(presplitting), ploc(ploc) {
     window  = core::make_ref<core::window_t>("aurora", width, height);
     context = core::make_ref<gfx::context_t>(true);
     base    = core::make_ref<gfx::base_t>(window, context);
@@ -263,6 +265,8 @@ struct renderer_t {
       cp.add_shader(debug_trace_primary_intersections_compute);
       debug_trace_primary_intersections_pipeline =
           context->create_compute_pipeline(cp);
+      debug_trace_primary_intersections_timer =
+          base->create_timer(gfx::resource_update_policy_t::e_every_frame, {});
     }
   }
   ~renderer_t() {
@@ -285,8 +289,27 @@ struct renderer_t {
           raw_model      = model::merge_meshes(raw_model);
           model_t& model = scene.construct<model_t>(id);
           for (auto raw_mesh : raw_model.meshes) {
-            bvh::bvh_t bvh       = bvh::build_bvh(raw_mesh);
-            mesh_t&    mesh      = model.meshes.emplace_back();
+            bvh::bvh_t                       bvh{};
+            std::vector<bvh::bvh_triangle_t> triangles =
+                bvh::triangles_from_mesh(raw_mesh);
+            if (presplitting) {
+              auto [aabbs, tri_indices] = bvh::presplit(triangles);
+              if (ploc)
+                bvh = bvh::build_bvh_ploc(aabbs);
+              else
+                bvh = bvh::build_bvh_binned_sah(aabbs);
+              bvh::presplit_remove_indirection(bvh, tri_indices);
+              bvh::presplit_remove_duplicates(bvh);
+            } else {
+              auto aabbs = bvh::aabbs_from_triangles(triangles);
+              if (ploc)
+                bvh = bvh::build_bvh_ploc(aabbs);
+              else
+                bvh = bvh::build_bvh_binned_sah(aabbs);
+            }
+            bvh.triangles = triangles;
+
+            mesh_t& mesh         = model.meshes.emplace_back();
             mesh.depth_of_bvh    = bvh::depth_of_bvh(bvh);
             mesh.cost_of_bvh     = bvh::cost_of_bvh(bvh);
             mesh.vertex_count    = raw_mesh.vertices.size();
@@ -348,8 +371,7 @@ struct renderer_t {
     static bool debug_trace_nodes                 = false;
     static bool debug_trace_primary               = false;
     static bool debug_trace_primary_intersections = true;
-    static int  nodes_intersections_normalize     = 100;
-    static int  triangles_intersections_normalize = 100;
+    static int  normalization_constant            = 150;
 
     context->cmd_image_memory_barrier(
         cmd, image,
@@ -413,12 +435,10 @@ struct renderer_t {
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
           pc.width       = image_width;
           pc.height      = image_height;
-          pc.raw_index_count               = mesh.raw_index_count;
-          pc.bindless_image                = bindless_image.val;
-          pc.node_count                    = mesh.node_count;
-          pc.nodes_intersections_normalize = nodes_intersections_normalize;
-          pc.triangles_intersections_normalize =
-              triangles_intersections_normalize;
+          pc.raw_index_count        = mesh.raw_index_count;
+          pc.bindless_image         = bindless_image.val;
+          pc.node_count             = mesh.node_count;
+          pc.normalization_constant = normalization_constant;
           context->cmd_push_constants(cmd, debug_draw_triangles_pipeline,
                                       VK_SHADER_STAGE_ALL, 0, sizeof(pc), &pc);
           context->cmd_draw(cmd, mesh.raw_index_count, 1, 0, 0);
@@ -445,12 +465,10 @@ struct renderer_t {
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
           pc.width       = image_width;
           pc.height      = image_height;
-          pc.raw_index_count               = mesh.raw_index_count;
-          pc.bindless_image                = bindless_image.val;
-          pc.node_count                    = mesh.node_count;
-          pc.nodes_intersections_normalize = nodes_intersections_normalize;
-          pc.triangles_intersections_normalize =
-              triangles_intersections_normalize;
+          pc.raw_index_count        = mesh.raw_index_count;
+          pc.bindless_image         = bindless_image.val;
+          pc.node_count             = mesh.node_count;
+          pc.normalization_constant = normalization_constant;
           context->cmd_push_constants(cmd, debug_draw_nodes_pipeline,
                                       VK_SHADER_STAGE_ALL, 0, sizeof(pc), &pc);
           context->cmd_draw(cmd, mesh.node_count * 24, 1, 0, 0);
@@ -485,9 +503,7 @@ struct renderer_t {
             pc.raw_index_count = mesh.raw_index_count;
             pc.bindless_image  = bindless_image.val;
             pc.node_count      = mesh.node_count;
-            pc.nodes_intersections_normalize = nodes_intersections_normalize;
-            pc.triangles_intersections_normalize =
-                triangles_intersections_normalize;
+            pc.normalization_constant = normalization_constant;
             context->cmd_push_constants(cmd, debug_trace_triangles_pipeline,
                                         VK_SHADER_STAGE_ALL, 0, sizeof(pc),
                                         &pc);
@@ -523,9 +539,7 @@ struct renderer_t {
             pc.raw_index_count = mesh.raw_index_count;
             pc.bindless_image  = bindless_image.val;
             pc.node_count      = mesh.node_count;
-            pc.nodes_intersections_normalize = nodes_intersections_normalize;
-            pc.triangles_intersections_normalize =
-                triangles_intersections_normalize;
+            pc.normalization_constant = normalization_constant;
             context->cmd_push_constants(cmd, debug_trace_nodes_pipeline,
                                         VK_SHADER_STAGE_ALL, 0, sizeof(pc),
                                         &pc);
@@ -554,12 +568,10 @@ struct renderer_t {
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
           pc.width       = image_width;
           pc.height      = image_height;
-          pc.raw_index_count               = mesh.raw_index_count;
-          pc.bindless_image                = bindless_image.val;
-          pc.node_count                    = mesh.node_count;
-          pc.nodes_intersections_normalize = nodes_intersections_normalize;
-          pc.triangles_intersections_normalize =
-              triangles_intersections_normalize;
+          pc.raw_index_count        = mesh.raw_index_count;
+          pc.bindless_image         = bindless_image.val;
+          pc.node_count             = mesh.node_count;
+          pc.normalization_constant = normalization_constant;
           context->cmd_push_constants(cmd, debug_trace_primary_pipeline,
                                       VK_SHADER_STAGE_ALL, 0, sizeof(pc), &pc);
           context->cmd_dispatch(cmd, math::ceil(image_width / 8),
@@ -568,6 +580,8 @@ struct renderer_t {
       });
     }
     if (debug_trace_primary_intersections) {
+      context->cmd_begin_timer(
+          cmd, base->timer(debug_trace_primary_intersections_timer));
       context->cmd_bind_pipeline(cmd,
                                  debug_trace_primary_intersections_pipeline);
       context->cmd_bind_descriptor_sets(
@@ -588,12 +602,10 @@ struct renderer_t {
           pc.nodes       = context->get_buffer_device_address(mesh.nodes);
           pc.width       = image_width;
           pc.height      = image_height;
-          pc.raw_index_count               = mesh.raw_index_count;
-          pc.bindless_image                = bindless_image.val;
-          pc.node_count                    = mesh.node_count;
-          pc.nodes_intersections_normalize = nodes_intersections_normalize;
-          pc.triangles_intersections_normalize =
-              triangles_intersections_normalize;
+          pc.raw_index_count        = mesh.raw_index_count;
+          pc.bindless_image         = bindless_image.val;
+          pc.node_count             = mesh.node_count;
+          pc.normalization_constant = normalization_constant;
           context->cmd_push_constants(
               cmd, debug_trace_primary_intersections_pipeline,
               VK_SHADER_STAGE_ALL, 0, sizeof(pc), &pc);
@@ -601,6 +613,8 @@ struct renderer_t {
                                 math::ceil(image_height / 8), 1);
         }
       });
+      context->cmd_end_timer(
+          cmd, base->timer(debug_trace_primary_intersections_timer));
     }
 
     // context->cmd_image_memory_barrier(
@@ -703,10 +717,7 @@ struct renderer_t {
       ImGui::Checkbox("debug_trace_primary_intersections",
                       &debug_trace_primary_intersections);
       ImGui::NewLine();
-      ImGui::DragInt("nodes_intersections_normalize",
-                     &nodes_intersections_normalize);
-      ImGui::DragInt("triangles_intersections_normalize",
-                     &triangles_intersections_normalize);
+      ImGui::DragInt("normalization_constant", &normalization_constant);
       ImGui::NewLine();
       ImGui::DragFloat("camera speed", &camera_speed, 0.01);
 
@@ -720,6 +731,11 @@ struct renderer_t {
 
       ImGui::NewLine();
       ImGui::Text("framerate: %f", ImGui::GetIO().Framerate);
+      if (auto t = context->timer_get_time(
+              base->timer(debug_trace_primary_intersections_timer)))
+        ImGui::Text("primary took: %f", *t);
+      else
+        ImGui::Text("primary took: na");
       ImGui::End();
     }
 
@@ -787,6 +803,8 @@ struct renderer_t {
   core::ref<gfx::context_t> context;
   core::ref<gfx::base_t>    base;
 
+  bool presplitting, ploc;
+
   gfx::handle_managed_buffer_t camera;
   float                        camera_speed = 1.f;
 
@@ -821,8 +839,9 @@ struct renderer_t {
   gfx::handle_shader_t   debug_trace_primary_compute;
   gfx::handle_pipeline_t debug_trace_primary_pipeline;
 
-  gfx::handle_shader_t   debug_trace_primary_intersections_compute;
-  gfx::handle_pipeline_t debug_trace_primary_intersections_pipeline;
+  gfx::handle_shader_t        debug_trace_primary_intersections_compute;
+  gfx::handle_pipeline_t      debug_trace_primary_intersections_pipeline;
+  gfx::handle_managed_timer_t debug_trace_primary_intersections_timer;
 };
 
 #endif

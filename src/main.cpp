@@ -1,16 +1,19 @@
+#include <string>
+
 #include "camera.hpp"
 #include "renderer.hpp"
 
 int main(int argc, char **argv) {
-  if (argc != 4) {
-    std::cerr << "Usage: aurora width height model\n";
+  if (argc != 6) {
+    std::cerr << "Usage: aurora width height model presplitting ploc\n";
     exit(EXIT_FAILURE);
   }
 
   horizon_info("{}", std::filesystem::current_path().c_str());
 
   auto renderer =
-      core::make_ref<renderer_t>(std::stoi(argv[1]), std::stoi(argv[2]));
+      core::make_ref<renderer_t>(std::stoi(argv[1]), std::stoi(argv[2]),
+                                 std::stoi(argv[4]), std::stoi(argv[5]));
 
   editor_camera_t editor_camera{*renderer->window};
 
