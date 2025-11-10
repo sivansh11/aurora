@@ -2,6 +2,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "editor_camera.hpp"
 #include "horizon/core/core.hpp"
 #include "horizon/core/ecs.hpp"
 #include "horizon/core/logger.hpp"
@@ -12,6 +13,7 @@
 #include "horizon/gfx/rendergraph.hpp"
 #include "horizon/gfx/types.hpp"
 #include "imgui.h"
+#include "math/math.hpp"
 #include "model/model.hpp"
 
 app_t::app_t(const int argc, const char** argv) : argc(argc), argv(argv) {
@@ -48,6 +50,8 @@ void app_t::run() {
   uint32_t image_width = 5, image_height = 5;
 
   core::frame_timer_t frame_timer{60.f};
+  editor_camera_t     camera{};
+
   while (!window->should_close()) {
     window->poll_events();
     if (window->get_key_pressed(core::key_t::e_q)) break;
@@ -126,7 +130,14 @@ void app_t::run() {
         ImGui::SetNextWindowClass(&window_class);
         ImGuiWindowFlags viewPortFlags =
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoDecoration;
+        if (ImGui::IsKeyPressed(ImGuiKey_C, false))
+          camera.should_update = !camera.should_update;
         ImGui::Begin("viewport", nullptr, viewPortFlags);
+        // TODO: if should update, set mouse position to center of screen
+        camera.update(dt.count());
+
+        // horizon_info("{}", camera.view);
+        //
         // ImVec2 mouse_position  = ImGui::GetMousePos();
         // ImVec2 window_position = ImGui::GetWindowPos();
         // auto   vp              = ImGui::GetWindowSize();
