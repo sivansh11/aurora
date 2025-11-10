@@ -25,6 +25,7 @@ struct material_t {
 struct gpu_mesh_t {
   vertex_t *vertices;
   uint32_t *indices;
+  float4x4 *transform;
   uint32_t material_index;
   uint32_t padding;
 };
