@@ -1,4 +1,4 @@
-// #define USE_CWBVH
+#define USE_CWBVH
 #define DEBUG_HIT // to enable intersection stats in hit
 #include "intersection.slang"
 #include "types.slang"

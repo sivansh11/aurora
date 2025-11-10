@@ -1,7 +1,5 @@
 #include "renderer.hpp"
 
-#include <vulkan/vulkan_core.h>
-
 #include <algorithm>
 #include <optional>
 #include <string>
@@ -53,7 +51,7 @@ diffuse_renderer_t::diffuse_renderer_t(core::ref<core::window_t> window,   //
 diffuse_renderer_t::~diffuse_renderer_t() {}
 
 void diffuse_renderer_t::render(gfx::handle_commandbuffer_t    cbuf,
-                                ecs::scene_t<>                &scene,
+                                renderer_data_t               &renderer_data,
                                 gfx::handle_buffer_t           camera,
                                 gfx::handle_bindless_sampler_t bsampler,
                                 VkViewport vk_viewport, VkRect2D vk_scissor) {
@@ -61,26 +59,25 @@ void diffuse_renderer_t::render(gfx::handle_commandbuffer_t    cbuf,
   context->cmd_bind_descriptor_sets(cbuf, p, 0,
                                     {base->_bindless_descriptor_set});
   context->cmd_set_viewport_and_scissor(cbuf, vk_viewport, vk_scissor);
-  scene.for_all<model_t>([&](ecs::entity_id_t id, const model_t &model) {
+
+  for (auto cpu_mesh : renderer_data.cpu_meshes) {
     push_constant_t pc;
     pc.bsampler = bsampler;
     pc.camera =
         gfx::to<core::camera_t *>(context->get_buffer_device_address(camera));
-    for (const auto mesh : model.meshes) {
-      push_constant_mesh_t push_constant_mesh{};
-      push_constant_mesh.vertices = gfx::to<model::vertex_t *>(
-          context->get_buffer_device_address(mesh.vertex_buffer));
-      push_constant_mesh.indices = gfx::to<uint32_t *>(
-          context->get_buffer_device_address(mesh.index_buffer));
-      push_constant_mesh.transform = gfx::to<math::mat4 *>(
-          context->get_buffer_device_address(mesh.transform));
-      push_constant_mesh.bdiffuse = mesh.bdiffuse;
-      pc.push_constant_mesh       = push_constant_mesh;
-      context->cmd_push_constants(cbuf, p, VK_SHADER_STAGE_ALL, 0,
-                                  sizeof(push_constant_t), &pc);
-      context->cmd_draw(cbuf, mesh.index_count, 1, 0, 0);
-    }
-  });
+    pc.materials =
+        context->get_buffer_device_address(renderer_data.materials_buffer);
+    pc.gpu_mesh.vertices =
+        context->get_buffer_device_address(cpu_mesh.vertex_buffer);
+    pc.gpu_mesh.indices =
+        context->get_buffer_device_address(cpu_mesh.index_buffer);
+    pc.gpu_mesh.transform =
+        context->get_buffer_device_address(cpu_mesh.transform);
+    pc.gpu_mesh.material_index = cpu_mesh.material_index;
+    context->cmd_push_constants(cbuf, p, VK_SHADER_STAGE_ALL, 0,
+                                sizeof(push_constant_t), &pc);
+    context->cmd_draw(cbuf, cpu_mesh.index_count, 1, 0, 0);
+  }
 }
 
 debug_raytracer_t::debug_raytracer_t(core::ref<core::window_t> window,   //
@@ -114,7 +111,7 @@ debug_raytracer_t::debug_raytracer_t(core::ref<core::window_t> window,   //
 debug_raytracer_t::~debug_raytracer_t() {}
 
 void debug_raytracer_t::render(gfx::handle_commandbuffer_t    cbuf,
-                               ecs::scene_t<>                &scene,
+                               renderer_data_t               &renderer_data,
                                gfx::handle_buffer_t           camera,
                                gfx::handle_bindless_sampler_t bsampler,
                                uint32_t width, uint32_t height,
@@ -122,31 +119,26 @@ void debug_raytracer_t::render(gfx::handle_commandbuffer_t    cbuf,
   context->cmd_bind_pipeline(cbuf, p);
   context->cmd_bind_descriptor_sets(cbuf, p, 0,
                                     {base->_bindless_descriptor_set});
-  scene.for_all<model_t>([&](ecs::entity_id_t id, const model_t &model) {
-    push_constant_t pc;
-    pc.camera =
-        gfx::to<core::camera_t *>(context->get_buffer_device_address(camera));
-    check(model.meshes.size() == 1,
-          "raytracing can only be done on models with 1 meshes for now");
-    const mesh_t &mesh = model.meshes[0];
-    pc.triangles       = gfx::to<math::triangle_t *>(
-        context->get_buffer_device_address(mesh.triangles));
-    pc.bvh2_nodes = gfx::to<bvh::node_t *>(
-        context->get_buffer_device_address(mesh.bvh2_nodes));
-    pc.bvh2_prim_indices = gfx::to<uint32_t *>(
-        context->get_buffer_device_address(mesh.bvh2_prim_indices));
-    pc.cwbvh_nodes = gfx::to<bvh::cnode_t *>(
-        context->get_buffer_device_address(mesh.cwbvh_nodes));
-    pc.cwbvh_prim_indices = gfx::to<uint32_t *>(
-        context->get_buffer_device_address(mesh.cwbvh_prim_indices));
-    pc.width   = width;
-    pc.height  = height;
-    pc.bsimage = bsimage;
-    context->cmd_push_constants(cbuf, p, VK_SHADER_STAGE_ALL, 0,
-                                sizeof(push_constant_t), &pc);
-    context->cmd_dispatch(cbuf, math::ceil(width / 8), math::ceil(height / 8),
-                          1);
-  });
+
+  push_constant_t pc;
+  pc.camera =
+      gfx::to<core::camera_t *>(context->get_buffer_device_address(camera));
+  pc.triangles = gfx::to<triangle_t *>(
+      context->get_buffer_device_address(renderer_data.triangles_buffer));
+  pc.bvh2_nodes = gfx::to<bvh::node_t *>(
+      context->get_buffer_device_address(renderer_data.bvh2_nodes));
+  pc.bvh2_prim_indices = gfx::to<uint32_t *>(
+      context->get_buffer_device_address(renderer_data.bvh2_prim_indices));
+  pc.cwbvh_nodes = gfx::to<bvh::cnode_t *>(
+      context->get_buffer_device_address(renderer_data.cwbvh_nodes));
+  pc.cwbvh_prim_indices = gfx::to<uint32_t *>(
+      context->get_buffer_device_address(renderer_data.cwbvh_prim_indices));
+  pc.width   = width;
+  pc.height  = height;
+  pc.bsimage = bsimage;
+  context->cmd_push_constants(cbuf, p, VK_SHADER_STAGE_ALL, 0,
+                              sizeof(push_constant_t), &pc);
+  context->cmd_dispatch(cbuf, math::ceil(width / 8), math::ceil(height / 8), 1);
 }
 
 renderer_t::renderer_t(core::ref<core::window_t> window,   //
@@ -258,136 +250,8 @@ void renderer_t::recreate_sized_resources(uint32_t width, uint32_t height) {
   }
 }
 
-std::vector<gfx::pass_t> renderer_t::get_passes(ecs::scene_t<>       &scene,
+std::vector<gfx::pass_t> renderer_t::get_passes(renderer_data_t &renderer_data,
                                                 const core::camera_t &camera) {
-  scene.for_all<model::raw_model_t>([&scene, this](
-                                        ecs::entity_id_t          id,
-                                        const model::raw_model_t &raw_model) {
-    if (scene.has<model_t>(id)) return;
-    model_t &model = scene.construct<model_t>(id);
-
-    for (uint32_t i = 0; i < raw_model.meshes.size(); i++) {
-      const auto raw_mesh = raw_model.meshes[i];
-      mesh_t    &mesh     = model.meshes.emplace_back();
-
-      mesh.vertex_count = raw_mesh.vertices.size();
-      mesh.index_count  = raw_mesh.indices.size();
-
-      gfx::config_buffer_t cb{};
-      cb.vk_buffer_usage_flags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-      {
-        cb.vk_size = sizeof(raw_mesh.vertices[0]) * raw_mesh.vertices.size();
-        cb.vma_allocation_create_flags =
-            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        cb.debug_name =
-            std::to_string(id) + ": " + std::to_string(i) + " vertex buffer";
-        mesh.vertex_buffer = gfx::helper::create_buffer_staged(
-            *context, base->_command_pool, cb, raw_mesh.vertices.data(),
-            cb.vk_size);
-      }
-      {
-        cb.vk_size = sizeof(raw_mesh.indices[0]) * raw_mesh.indices.size();
-        cb.vma_allocation_create_flags =
-            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        cb.debug_name =
-            std::to_string(id) + ": " + std::to_string(i) + " index buffer";
-        mesh.index_buffer = gfx::helper::create_buffer_staged(
-            *context, base->_command_pool, cb, raw_mesh.indices.data(),
-            cb.vk_size);
-      }
-
-      {
-        cb.vk_size = sizeof(math::mat4);
-        cb.vma_allocation_create_flags =
-            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        mesh.transform = context->create_buffer(cb);
-        *reinterpret_cast<math::mat4 *>(context->map_buffer(mesh.transform)) =
-            scene.get<core::transform_t>(id).mat4();
-      }
-
-      auto triangles = model::create_triangles_from_mesh(raw_mesh);
-      {
-        cb.vk_size = sizeof(triangles[0]) * triangles.size();
-        cb.vma_allocation_create_flags =
-            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        cb.debug_name =
-            std::to_string(id) + ": " + std::to_string(i) + " triangles buffer";
-        mesh.triangles = gfx::helper::create_buffer_staged(
-            *context, base->_command_pool, cb, triangles.data(), cb.vk_size);
-      }
-
-      auto [aabbs, tri_indices] = bvh::presplit(triangles, 0.3);
-
-      bvh::bvh_t bvh2 = bvh::build_bvh_sweep_sah(aabbs);
-      bvh::presplit_remove_indirection(bvh2, tri_indices);
-      bvh::presplit_remove_duplicates(bvh2);
-
-      bvh::cwbvh_t cwbvh = bvh::convert(bvh2);
-
-      {
-        cb.vk_size = sizeof(bvh2.nodes[0]) * bvh2.nodes.size();
-        cb.vma_allocation_create_flags =
-            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        cb.debug_name = std::to_string(id) + ": " + std::to_string(i) +
-                        " bvh2 nodes buffer";
-        mesh.bvh2_nodes = gfx::helper::create_buffer_staged(
-            *context, base->_command_pool, cb, bvh2.nodes.data(), cb.vk_size);
-      }
-      {
-        cb.vk_size = sizeof(bvh2.prim_indices[0]) * bvh2.prim_indices.size();
-        cb.vma_allocation_create_flags =
-            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        cb.debug_name = std::to_string(id) + ": " + std::to_string(i) +
-                        " bvh2 prim_indices buffer";
-        mesh.bvh2_prim_indices = gfx::helper::create_buffer_staged(
-            *context, base->_command_pool, cb, bvh2.prim_indices.data(),
-            cb.vk_size);
-      }
-
-      {
-        cb.vk_size = sizeof(cwbvh.nodes[0]) * cwbvh.nodes.size();
-        cb.vma_allocation_create_flags =
-            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        cb.debug_name = std::to_string(id) + ": " + std::to_string(i) +
-                        " cwbvh nodes buffer";
-        mesh.cwbvh_nodes = gfx::helper::create_buffer_staged(
-            *context, base->_command_pool, cb, cwbvh.nodes.data(), cb.vk_size);
-      }
-      {
-        cb.vk_size = sizeof(cwbvh.prim_indices[0]) * cwbvh.prim_indices.size();
-        cb.vma_allocation_create_flags =
-            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        cb.debug_name = std::to_string(id) + ": " + std::to_string(i) +
-                        " cwbvh prim_indices buffer";
-        mesh.cwbvh_prim_indices = gfx::helper::create_buffer_staged(
-            *context, base->_command_pool, cb, cwbvh.prim_indices.data(),
-            cb.vk_size);
-      }
-
-      auto diffuse_info = std::find_if(
-          raw_mesh.material_description.texture_infos.begin(),
-          raw_mesh.material_description.texture_infos.end(),
-          [](model::texture_info_t info) -> bool {
-            return info.texture_type == model::texture_type_t::e_diffuse_map;
-          });
-      if (diffuse_info != raw_mesh.material_description.texture_infos.end()) {
-        mesh.diffuse = gfx::helper::load_image_from_path_instant(
-            *context, base->_command_pool, diffuse_info->file_path,
-            VK_FORMAT_R8G8B8A8_SRGB);
-        mesh.diffuse_view =
-            context->create_image_view({.handle_image = mesh.diffuse,
-                                        .debug_name = diffuse_info->file_path});
-
-        mesh.bdiffuse = base->new_bindless_image();
-        base->set_bindless_image(mesh.bdiffuse, mesh.diffuse_view,
-                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-      } else {
-        mesh.bdiffuse = bwhite;
-      }
-      horizon_info("{}: {} mesh", id, i);
-    }
-  });
-
   std::vector<gfx::pass_t> passes;
 
   VkRect2D vk_rect_2d{};
@@ -419,21 +283,24 @@ std::vector<gfx::pass_t> renderer_t::get_passes(ecs::scene_t<>       &scene,
             depth.clear_value.depthStencil.depth = 1;
             context->cmd_begin_rendering(cbuf, {rendering}, depth, vk_rect_2d);
 
-            diffuse_renderer->render(cbuf, scene, base->buffer(camera_buffer),
-                                     bsampler, viewport, scissor);
+            diffuse_renderer->render(cbuf, renderer_data,
+                                     base->buffer(camera_buffer), bsampler,
+                                     viewport, scissor);
 
             context->cmd_end_rendering(cbuf);
           })
       .add_write_image(image, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-#endif
+                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+#else
   passes
       .emplace_back([&](gfx::handle_commandbuffer_t cbuf) {
-        debug_raytracer->render(cbuf, scene, base->buffer(camera_buffer),
-                                bsampler, width, height, bsimage);
+        debug_raytracer->render(cbuf, renderer_data,
+                                base->buffer(camera_buffer), bsampler, width,
+                                height, bsimage);
       })
       .add_write_image(image, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_IMAGE_LAYOUT_GENERAL);
+#endif
 
   return passes;
 }

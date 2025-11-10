@@ -18,8 +18,21 @@ struct vertex_t {
   float3 bi_tangent;
 };
 
+struct material_t {
+  uint32_t bdiffuse;
+};
+
+struct gpu_mesh_t {
+  vertex_t *vertices;
+  uint32_t *indices;
+  uint32_t material_index;
+  uint32_t padding;
+};
+
 struct triangle_t {
   float3 v0, v1, v2;
+  uint16_t mesh_index;
+  uint16_t material_index;
   float3 normal() {
     float3 e1 = v1 - v0;
     float3 e2 = v2 - v0;
@@ -29,6 +42,8 @@ struct triangle_t {
 
 struct triangle_aliased_t {
   float3 vertices[3];
+  uint16_t mesh_index;
+  uint16_t material_index;
 };
 
 struct bvh2_node_t {

@@ -2,6 +2,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "assets.hpp"
 #include "editor_camera.hpp"
 #include "horizon/core/components.hpp"
 #include "horizon/core/core.hpp"
@@ -41,20 +42,16 @@ app_t::~app_t() {
 void app_t::run() {
   horizon_info("running app");
 
-  ecs::scene_t<> scene{};
-  {
-    auto  id        = scene.create();
-    auto& raw_model = scene.construct<model::raw_model_t>(id) =
-        model::load_model_from_path(argv[1]);
-    raw_model                    = model::merge_meshes(raw_model);
-    core::transform_t& transform = scene.construct<core::transform_t>(id);
-    transform.scale              = {0.01, 0.01, 0.01};
-  }
+  assets_manager_t assets_manager{};
+  assets_manager.load_model_from_path(argv[1]);
+
+  auto renderer_data = assets_manager.prepare(base, context, renderer->bwhite);
 
   uint32_t image_width = 5, image_height = 5;
 
   core::frame_timer_t frame_timer{60.f};
   editor_camera_t     camera{*window};
+  camera.camera_speed_multiplyer = 100.f;
 
   while (!window->should_close()) {
     window->poll_events();
@@ -65,19 +62,14 @@ void app_t::run() {
 
     base->begin();
 
-    scene.for_all<model::raw_model_t>(
-        [&](ecs::entity_id_t id, const model::raw_model_t& raw_model) {
-          if (scene.has<model_t>(id)) return;
-        });
-
     gfx::rendergraph_t rg{};
     VkRect2D           vk_rect_2d{};
     auto [width, height]     = window->dimensions();
     vk_rect_2d.extent.width  = width;
     vk_rect_2d.extent.height = height;
     renderer->recreate_sized_resources(image_width, image_height);
-    auto renderer_passes =
-        renderer->get_passes(scene, reinterpret_cast<core::camera_t&>(camera));
+    auto renderer_passes = renderer->get_passes(
+        renderer_data, reinterpret_cast<core::camera_t&>(camera));
     rg.passes.insert(rg.passes.end(), renderer_passes.begin(),
                      renderer_passes.end());
     rg.add_pass([&](gfx::handle_commandbuffer_t cmd) {
@@ -185,21 +177,6 @@ void app_t::run() {
   }
 
   context->wait_idle();
-
-  scene.for_all<model_t>(
-      [&scene, this](ecs::entity_id_t id, const model_t model) {
-        for (const auto mesh : model.meshes) {
-          context->destroy_buffer(mesh.vertex_buffer);
-          context->destroy_buffer(mesh.index_buffer);
-
-          context->destroy_buffer(mesh.transform);
-
-          if (mesh.bdiffuse != renderer->bwhite) {
-            context->destroy_image_view(mesh.diffuse_view);
-            context->destroy_image(mesh.diffuse);
-          }
-        }
-      });
 
   return;
 }

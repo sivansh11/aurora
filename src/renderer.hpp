@@ -3,6 +3,7 @@
 
 #include <vector>
 
+#include "assets.hpp"
 #include "bvh/bvh.hpp"
 #include "horizon/core/components.hpp"
 #include "horizon/core/ecs.hpp"
@@ -14,46 +15,11 @@
 #include "math/triangle.hpp"
 #include "model/model.hpp"
 
-// TODO: add destructor
-struct mesh_t {
-  gfx::handle_buffer_t vertex_buffer;
-  gfx::handle_buffer_t index_buffer;
-
-  uint32_t vertex_count;
-  uint32_t index_count;
-
-  gfx::handle_buffer_t transform;
-
-  gfx::handle_image_t      diffuse;
-  gfx::handle_image_view_t diffuse_view;
-
-  // TODO: experiment with more efficient triangle data formats for raytracing
-  gfx::handle_buffer_t triangles;
-
-  gfx::handle_buffer_t bvh2_nodes;
-  gfx::handle_buffer_t bvh2_prim_indices;
-
-  gfx::handle_buffer_t cwbvh_nodes;
-  gfx::handle_buffer_t cwbvh_prim_indices;
-
-  gfx::handle_bindless_image_t bdiffuse;
-};
-
-struct model_t {
-  std::vector<mesh_t> meshes;
-};
-
 struct diffuse_renderer_t {
-  struct push_constant_mesh_t {
-    model::vertex_t             *vertices;
-    uint32_t                    *indices;
-    math::mat4                  *transform;
-    gfx::handle_bindless_image_t bdiffuse;
-    uint32_t                     padding;
-  };
   struct push_constant_t {
     core::camera_t                *camera;
-    push_constant_mesh_t           push_constant_mesh;
+    VkDeviceAddress                materials;
+    gpu_mesh_t                     gpu_mesh;
     gfx::handle_bindless_sampler_t bsampler;
     uint32_t                       padding;
   };
@@ -64,7 +30,7 @@ struct diffuse_renderer_t {
                      VkFormat                  vk_format);
   ~diffuse_renderer_t();
 
-  void render(gfx::handle_commandbuffer_t cbuf, ecs::scene_t<> &scene,
+  void render(gfx::handle_commandbuffer_t cbuf, renderer_data_t &renderer_data,
               gfx::handle_buffer_t           camera,
               gfx::handle_bindless_sampler_t bsampler, VkViewport vk_viewport,
               VkRect2D vk_scissor);
@@ -82,7 +48,7 @@ struct diffuse_renderer_t {
 struct debug_raytracer_t {
   struct push_constant_t {
     core::camera_t                      *camera;
-    math::triangle_t                    *triangles;
+    triangle_t                          *triangles;
     bvh::node_t                         *bvh2_nodes;
     uint32_t                            *bvh2_prim_indices;
     bvh::cnode_t                        *cwbvh_nodes;
@@ -99,7 +65,7 @@ struct debug_raytracer_t {
                     VkFormat                  vk_format);
   ~debug_raytracer_t();
 
-  void render(gfx::handle_commandbuffer_t cbuf, ecs::scene_t<> &scene,
+  void render(gfx::handle_commandbuffer_t cbuf, renderer_data_t &renderer_data,
               gfx::handle_buffer_t           camera,
               gfx::handle_bindless_sampler_t bsampler, uint32_t width,
               uint32_t height, gfx::handle_bindless_storage_image_t bsimage);
@@ -122,7 +88,7 @@ struct renderer_t {
   ~renderer_t();
 
   void recreate_sized_resources(uint32_t width, uint32_t height);
-  std::vector<gfx::pass_t> get_passes(ecs::scene_t<>       &scene,
+  std::vector<gfx::pass_t> get_passes(renderer_data_t      &renderer_data,
                                       const core::camera_t &camera);
 
   core::ref<core::window_t> window;
