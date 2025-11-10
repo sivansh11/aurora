@@ -15,20 +15,20 @@
 #include "math/triangle.hpp"
 #include "model/model.hpp"
 
-struct diffuse_renderer_t {
+struct diffuse_t {
   struct push_constant_t {
     core::camera_t                *camera;
-    VkDeviceAddress                materials;
+    material_t                    *materials;
     gpu_mesh_t                     gpu_mesh;
     gfx::handle_bindless_sampler_t bsampler;
-    uint32_t                       padding;
+    uint32_t                       mesh_index;
   };
 
-  diffuse_renderer_t(core::ref<core::window_t> window,   //
+  diffuse_t(core::ref<core::window_t> window,   //
                      core::ref<gfx::context_t> context,  //
                      core::ref<gfx::base_t>    base,     //
                      VkFormat                  vk_format);
-  ~diffuse_renderer_t();
+  ~diffuse_t();
 
   void render(gfx::handle_commandbuffer_t cbuf, renderer_data_t &renderer_data,
               gfx::handle_buffer_t           camera,
@@ -64,6 +64,46 @@ struct debug_raytracer_t {
                     core::ref<gfx::base_t>    base,     //
                     VkFormat                  vk_format);
   ~debug_raytracer_t();
+
+  void render(gfx::handle_commandbuffer_t cbuf, renderer_data_t &renderer_data,
+              gfx::handle_buffer_t           camera,
+              gfx::handle_bindless_sampler_t bsampler, uint32_t width,
+              uint32_t height, gfx::handle_bindless_storage_image_t bsimage);
+
+  core::ref<core::window_t> window;
+  core::ref<gfx::context_t> context;
+  core::ref<gfx::base_t>    base;
+
+  gfx::handle_pipeline_layout_t pl;
+  gfx::handle_shader_t          c;
+  gfx::handle_pipeline_t        p;
+};
+
+struct raytracer_t {
+  struct push_constant_t {
+    core::camera_t                      *camera;
+    VkDeviceAddress                      meshes;
+    VkDeviceAddress                      materials;
+    triangle_t                          *triangles;
+    bvh::node_t                         *bvh2_nodes;
+    uint32_t                            *bvh2_prim_indices;
+    bvh::cnode_t                        *cwbvh_nodes;
+    uint32_t                            *cwbvh_prim_indices;
+    uint32_t                             width;
+    uint32_t                             height;
+    gfx::handle_bindless_storage_image_t bsimage;
+    gfx::handle_bindless_sampler_t       bsampler;
+    uint32_t                             triangles_count;
+    uint32_t                             padding;
+    uint32_t                             materials_count;
+    uint32_t                             meshes_count;
+  };
+
+  raytracer_t(core::ref<core::window_t> window,   //
+              core::ref<gfx::context_t> context,  //
+              core::ref<gfx::base_t>    base,     //
+              VkFormat                  vk_format);
+  ~raytracer_t();
 
   void render(gfx::handle_commandbuffer_t cbuf, renderer_data_t &renderer_data,
               gfx::handle_buffer_t           camera,
@@ -124,11 +164,12 @@ struct renderer_t {
   enum class rendering_mode_t {
     e_diffuse_raster,
     e_debug_raytracer,
-  } rendering_mode;
+    e_raytracer,
   } rendering_mode = renderer_t::rendering_mode_t::e_diffuse_raster;
 
-  core::ref<diffuse_renderer_t> diffuse_renderer;
+  core::ref<diffuse_t> diffuse_renderer;
   core::ref<debug_raytracer_t>  debug_raytracer;
+  core::ref<raytracer_t>        raytracer;
 };
 
 #endif

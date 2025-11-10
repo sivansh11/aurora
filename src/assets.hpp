@@ -27,25 +27,26 @@ struct cpu_mesh_t {
 
   gfx::handle_buffer_t transform;
 
+  uint32_t triangle_offset;
+
   gfx::handle_image_t      diffuse;
   gfx::handle_image_view_t diffuse_view;
-
-  uint32_t material_index;
 };
 
 struct gpu_mesh_t {
-  VkDeviceAddress vertices;
-  VkDeviceAddress indices;
-  VkDeviceAddress transform;
-  uint32_t        material_index;
-  uint32_t        padding;
+  model::vertex_t *vertices;
+  uint32_t        *indices;
+  math::mat4      *transform;
+  uint32_t         vertex_count;
+  uint32_t         index_count;
+  uint32_t         triangle_offset;
+  uint32_t         padding;
 };
 
 // // TODO: experiment with more efficient triangle data formats for
 struct triangle_t {
   math::triangle_t triangle;
-  uint16_t         mesh_index;
-  uint16_t         material_index;
+  uint32_t         mesh_index;
 };
 static_assert(sizeof(triangle_t) == 40, "sizeof(triangle_t) should be 40");
 
@@ -59,10 +60,14 @@ struct renderer_data_t {
   gfx::handle_buffer_t meshes_buffer;
 
   std::vector<cpu_mesh_t> cpu_meshes;
+
+  uint32_t materials_count;
+  uint32_t meshes_count;
+  uint32_t triangles_count;
 };
 
 struct assets_manager_t {
-  void            load_model_from_path(const std::filesystem::path& model_path);
+  void            load_model_from_path(const std::filesystem::path &model_path);
   renderer_data_t prepare(core::ref<gfx::base_t>       base,
                           core::ref<gfx::context_t>    context,
                           gfx::handle_bindless_image_t bdefault);

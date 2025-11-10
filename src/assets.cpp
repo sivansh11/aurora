@@ -1,18 +1,24 @@
 #include "assets.hpp"
 
+#include <cassert>
 #include <vector>
 
 #include "bvh/bvh.hpp"
 #include "horizon/core/components.hpp"
+#include "horizon/core/core.hpp"
+#include "horizon/core/logger.hpp"
 #include "horizon/gfx/helper.hpp"
 #include "horizon/gfx/types.hpp"
 #include "math/triangle.hpp"
+#include "math/utilies.hpp"
 #include "model/model.hpp"
 
 void assets_manager_t::load_model_from_path(const std::filesystem::path& path) {
   auto raw_model = model::load_model_from_path(path);
   for (auto& raw_mesh : raw_model.meshes) {
     loaded_meshes.push_back(raw_mesh);
+    horizon_info("indices count: {} vertices count: {}",
+                 raw_mesh.indices.size(), raw_mesh.vertices.size());
   }
 }
 
@@ -25,10 +31,11 @@ renderer_data_t assets_manager_t::prepare(
   std::vector<triangle_t> triangles;
   for (uint32_t mesh_index = 0; mesh_index < loaded_meshes.size();
        mesh_index++) {
-    const auto& raw_mesh  = loaded_meshes[mesh_index];
-    cpu_mesh_t& cpu_mesh  = cpu_meshes.emplace_back();
-    cpu_mesh.vertex_count = raw_mesh.vertices.size();
-    cpu_mesh.index_count  = raw_mesh.indices.size();
+    const auto& raw_mesh     = loaded_meshes[mesh_index];
+    cpu_mesh_t& cpu_mesh     = cpu_meshes.emplace_back();
+    cpu_mesh.vertex_count    = raw_mesh.vertices.size();
+    cpu_mesh.index_count     = raw_mesh.indices.size();
+    cpu_mesh.triangle_offset = triangles.size();
 
     gfx::config_buffer_t cb{};
     cb.vk_buffer_usage_flags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -59,8 +66,8 @@ renderer_data_t assets_manager_t::prepare(
           transform.mat4();
     }
 
-    cpu_mesh.material_index = materials.size();
-    material_t& material    = materials.emplace_back();
+    // cpu_mesh.material_index = materials.size();
+    material_t& material = materials.emplace_back();
 
     auto diffuse_info = std::find_if(
         raw_mesh.material_description.texture_infos.begin(),
@@ -85,15 +92,18 @@ renderer_data_t assets_manager_t::prepare(
 
     auto raw_triangles = model::create_triangles_from_mesh(raw_mesh);
     for (auto triangle : raw_triangles)
-      triangles.emplace_back(triangle, mesh_index, cpu_mesh.material_index);
+      triangles.emplace_back(triangle, mesh_index);
 
     gpu_mesh_t& gpu_mesh = gpu_meshes.emplace_back();
-    gpu_mesh.vertices =
-        context->get_buffer_device_address(cpu_mesh.vertex_buffer);
-    gpu_mesh.indices =
-        context->get_buffer_device_address(cpu_mesh.index_buffer);
-    gpu_mesh.transform = context->get_buffer_device_address(cpu_mesh.transform);
-    gpu_mesh.material_index = cpu_mesh.material_index;
+    gpu_mesh.vertices    = gfx::to<model::vertex_t*>(
+        context->get_buffer_device_address(cpu_mesh.vertex_buffer));
+    gpu_mesh.indices = gfx::to<uint32_t*>(
+        context->get_buffer_device_address(cpu_mesh.index_buffer));
+    gpu_mesh.transform = gfx::to<math::mat4*>(
+        context->get_buffer_device_address(cpu_mesh.transform));
+    gpu_mesh.vertex_count    = cpu_mesh.vertex_count;
+    gpu_mesh.index_count     = cpu_mesh.index_count;
+    gpu_mesh.triangle_offset = cpu_mesh.triangle_offset;
   }
 
   gfx::handle_buffer_t triangles_buffer;
@@ -116,11 +126,21 @@ renderer_data_t assets_manager_t::prepare(
   std::vector<math::triangle_t> tmp_triangles{};
   for (auto triangle : triangles) tmp_triangles.push_back(triangle.triangle);
 
-  auto [aabbs, tri_indices] = bvh::presplit(tmp_triangles, 0.3);
+  // auto [aabbs, tri_indices] = bvh::presplit(tmp_triangles, 0.3);
+  auto aabbs = math::aabbs_from_triangles(tmp_triangles);
 
-  bvh::bvh_t bvh2 = bvh::build_bvh_sweep_sah(aabbs);
-  bvh::presplit_remove_indirection(bvh2, tri_indices);
-  bvh::presplit_remove_duplicates(bvh2);
+  bvh::bvh_t bvh2 = bvh::build_bvh_sweep_sah(aabbs, 1, 1);
+  uint32_t   min  = std::numeric_limits<uint32_t>::max();
+  uint32_t   max  = 0;
+  for (const auto& node : bvh2.nodes) {
+    if (!node.is_leaf()) continue;
+    min = std::min(node.prim_count, min);
+    max = std::max(node.prim_count, max);
+  }
+  check(min == 1, "min prim needs to be 1 but it is {}", min);
+  check(max == 1, "max prim needs to be 1 but it is {}", max);
+  // bvh::presplit_remove_indirection(bvh2, tri_indices);
+  // bvh::presplit_remove_duplicates(bvh2);
 
   bvh::cwbvh_t cwbvh = bvh::convert(bvh2);
 
@@ -163,6 +183,17 @@ renderer_data_t assets_manager_t::prepare(
     meshes_buffer                  = gfx::helper::create_buffer_staged(
         *context, base->_command_pool, cb, gpu_meshes.data(), cb.vk_size);
   }
-  return {triangles_buffer,   bvh2_nodes,       bvh2_prim_indices, cwbvh_nodes,
-          cwbvh_prim_indices, materials_buffer, meshes_buffer,     cpu_meshes};
+  return {
+      triangles_buffer,
+      bvh2_nodes,
+      bvh2_prim_indices,
+      cwbvh_nodes,
+      cwbvh_prim_indices,
+      materials_buffer,
+      meshes_buffer,
+      cpu_meshes,
+      (uint32_t)materials.size(),
+      (uint32_t)gpu_meshes.size(),
+      (uint32_t)triangles.size(),
+  };
 }

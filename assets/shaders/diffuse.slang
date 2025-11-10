@@ -1,21 +1,11 @@
 #include "types.slang"
 
-struct mesh_t {
-  vertex_t *vertices;
-  uint32_t *indices;
-  float4x4 *transform;
-  uint32_t material;
-  uint32_t padding;
-};
-
 struct push_constant_t {
   camera_t *camera;
-
   material_t *materials;
-  mesh_t mesh;
-
+  gpu_mesh_t mesh;
   uint32_t bsampler;
-  uint32_t padding;
+  uint32_t mesh_index;
 };
 
 [vk::push_constant] push_constant_t pc;
@@ -57,6 +47,6 @@ struct fragment_t {
 [shader("fragment")]
 fragment_t fragment_main(uint32_t index, float2 uv) {
   fragment_t f;
-  f.color = textures[pc.materials[pc.mesh.material].bdiffuse].Sample(samplers[pc.bsampler], uv);
+  f.color = textures[pc.materials[pc.mesh_index].bdiffuse].Sample(samplers[pc.bsampler], uv);
   return f;
 }

@@ -51,6 +51,8 @@ void app_t::run() {
   uint32_t image_width = 5, image_height = 5;
 
   core::frame_timer_t frame_timer{60.f};
+  float               target_fps = 60.f;
+  auto                last_time  = std::chrono::system_clock::now();
   editor_camera_t     camera{*window};
   camera.camera_speed_multiplyer = 100.f;
 
@@ -59,6 +61,12 @@ void app_t::run() {
     if (window->get_key_pressed(core::key_t::e_q)) break;
     if (window->get_key_pressed(core::key_t::e_escape)) break;
 
+    auto current_time    = std::chrono::system_clock::now();
+    auto time_difference = current_time - last_time;
+    if (time_difference.count() / 1e6 < 1000.f / target_fps) {
+      continue;
+    }
+    last_time                  = current_time;
     core::timer::duration_t dt = frame_timer.update();
 
     base->begin();
@@ -157,13 +165,17 @@ void app_t::run() {
           ImGui::Begin("settings", &settings);
           ImGui::Text("%f fps", ImGui::GetIO().Framerate);
           ImGui::DragFloat("camera speed", &camera.camera_speed_multiplyer);
-          if (ImGui::Button("diffuse_raster")) {
+          if (ImGui::Button("diffuse")) {
             renderer->rendering_mode =
                 renderer_t::rendering_mode_t::e_diffuse_raster;
           }
           if (ImGui::Button("debug_raytracer")) {
             renderer->rendering_mode =
                 renderer_t::rendering_mode_t::e_debug_raytracer;
+          }
+          if (ImGui::Button("raytracer")) {
+            renderer->rendering_mode =
+                renderer_t::rendering_mode_t::e_raytracer;
           }
           ImGui::End();
         }

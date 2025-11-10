@@ -76,7 +76,6 @@ class editor_camera_t : public core::camera_t {
 
   float fov{45.0f};
   float camera_speed_multiplyer{1.0f};
-  float far{1000.0f};
   float far{10000.0f};
   float near{0.1f};
 

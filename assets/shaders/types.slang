@@ -26,14 +26,15 @@ struct gpu_mesh_t {
   vertex_t *vertices;
   uint32_t *indices;
   float4x4 *transform;
-  uint32_t material_index;
+  uint32_t vertex_count;
+  uint32_t index_count;
+  uint32_t triangle_offset; 
   uint32_t padding;
 };
 
 struct triangle_t {
   float3 v0, v1, v2;
-  uint16_t mesh_index;
-  uint16_t material_index;
+  uint32_t mesh_index;
   float3 normal() {
     float3 e1 = v1 - v0;
     float3 e2 = v2 - v0;
@@ -56,7 +57,7 @@ struct bvh2_node_t {
 };
 
 struct cwbvh_node_t {
-  float3 p;
+  float3     p;
   uint8_t    e[3];
   uint8_t    imask;
   uint32_t   child_base_index;
