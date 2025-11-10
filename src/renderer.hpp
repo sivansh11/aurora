@@ -125,6 +125,7 @@ struct renderer_t {
     e_diffuse_raster,
     e_debug_raytracer,
   } rendering_mode;
+  } rendering_mode = renderer_t::rendering_mode_t::e_diffuse_raster;
 
   core::ref<diffuse_renderer_t> diffuse_renderer;
   core::ref<debug_raytracer_t>  debug_raytracer;
