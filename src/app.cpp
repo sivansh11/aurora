@@ -161,9 +161,9 @@ void app_t::run() {
             renderer->rendering_mode =
                 renderer_t::rendering_mode_t::e_diffuse_raster;
           }
-          if (ImGui::Button("debug_raytracing")) {
+          if (ImGui::Button("debug_raytracer")) {
             renderer->rendering_mode =
-                renderer_t::rendering_mode_t::e_debug_raytracing;
+                renderer_t::rendering_mode_t::e_debug_raytracer;
           }
           ImGui::End();
         }

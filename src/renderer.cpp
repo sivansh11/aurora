@@ -296,7 +296,7 @@ std::vector<gfx::pass_t> renderer_t::get_passes(renderer_data_t &renderer_data,
                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
       break;
 
-    case rendering_mode_t::e_debug_raytracing:
+    case rendering_mode_t::e_debug_raytracer:
       passes
           .emplace_back([&](gfx::handle_commandbuffer_t cbuf) {
             debug_raytracer->render(cbuf, renderer_data,

@@ -123,7 +123,7 @@ struct renderer_t {
 
   enum class rendering_mode_t {
     e_diffuse_raster,
-    e_debug_raytracing,
+    e_debug_raytracer,
   } rendering_mode;
 
   core::ref<diffuse_renderer_t> diffuse_renderer;
