@@ -47,10 +47,14 @@ void app_t::run() {
 
   uint32_t image_width = 5, image_height = 5;
 
+  core::frame_timer_t frame_timer{60.f};
   while (!window->should_close()) {
     window->poll_events();
     if (window->get_key_pressed(core::key_t::e_q)) break;
     if (window->get_key_pressed(core::key_t::e_escape)) break;
+
+    core::timer::duration_t dt = frame_timer.update();
+
     base->begin();
 
     scene.for_all<model::raw_model_t>(
