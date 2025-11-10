@@ -43,9 +43,10 @@ void app_t::run() {
 
   ecs::scene_t<> scene{};
   {
-    auto id = scene.create();
-    scene.construct<model::raw_model_t>(id) =
+    auto  id        = scene.create();
+    auto& raw_model = scene.construct<model::raw_model_t>(id) =
         model::load_model_from_path(argv[1]);
+    raw_model                    = model::merge_meshes(raw_model);
     core::transform_t& transform = scene.construct<core::transform_t>(id);
     transform.scale              = {0.01, 0.01, 0.01};
   }
@@ -162,6 +163,7 @@ void app_t::run() {
         if (settings) {
           ImGui::Begin("settings", &settings);
           ImGui::Text("%f fps", ImGui::GetIO().Framerate);
+          ImGui::DragFloat("camera speed", &camera.camera_speed_multiplyer);
           ImGui::End();
         }
         gfx::helper::imgui_endframe(*context, cmd);

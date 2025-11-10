@@ -3,6 +3,7 @@
 
 #include <vector>
 
+#include "bvh/bvh.hpp"
 #include "horizon/core/components.hpp"
 #include "horizon/core/ecs.hpp"
 #include "horizon/core/window.hpp"
@@ -10,6 +11,7 @@
 #include "horizon/gfx/context.hpp"
 #include "horizon/gfx/rendergraph.hpp"
 #include "horizon/gfx/types.hpp"
+#include "math/triangle.hpp"
 #include "model/model.hpp"
 
 // TODO: add destructor
@@ -24,6 +26,15 @@ struct mesh_t {
 
   gfx::handle_image_t      diffuse;
   gfx::handle_image_view_t diffuse_view;
+
+  // TODO: experiment with more efficient triangle data formats for raytracing
+  gfx::handle_buffer_t triangles;
+
+  gfx::handle_buffer_t bvh2_nodes;
+  gfx::handle_buffer_t bvh2_prim_indices;
+
+  gfx::handle_buffer_t cwbvh_nodes;
+  gfx::handle_buffer_t cwbvh_prim_indices;
 
   gfx::handle_bindless_image_t bdiffuse;
 };
@@ -68,6 +79,40 @@ struct diffuse_renderer_t {
   gfx::handle_pipeline_t        p;
 };
 
+struct debug_raytracer_t {
+  struct push_constant_t {
+    core::camera_t                      *camera;
+    math::triangle_t                    *triangles;
+    bvh::node_t                         *bvh2_nodes;
+    uint32_t                            *bvh2_prim_indices;
+    bvh::cnode_t                        *cwbvh_nodes;
+    uint32_t                            *cwbvh_prim_indices;
+    uint32_t                             width;
+    uint32_t                             height;
+    gfx::handle_bindless_storage_image_t bsimage;
+    uint32_t                             padding;
+  };
+
+  debug_raytracer_t(core::ref<core::window_t> window,   //
+                    core::ref<gfx::context_t> context,  //
+                    core::ref<gfx::base_t>    base,     //
+                    VkFormat                  vk_format);
+  ~debug_raytracer_t();
+
+  void render(gfx::handle_commandbuffer_t cbuf, ecs::scene_t<> &scene,
+              gfx::handle_buffer_t           camera,
+              gfx::handle_bindless_sampler_t bsampler, uint32_t width,
+              uint32_t height, gfx::handle_bindless_storage_image_t bsimage);
+
+  core::ref<core::window_t> window;
+  core::ref<gfx::context_t> context;
+  core::ref<gfx::base_t>    base;
+
+  gfx::handle_pipeline_layout_t pl;
+  gfx::handle_shader_t          c;
+  gfx::handle_pipeline_t        p;
+};
+
 struct renderer_t {
   renderer_t(core::ref<core::window_t> window,   //
              core::ref<gfx::context_t> context,  //
@@ -104,11 +149,14 @@ struct renderer_t {
   gfx::handle_image_t      depth      = core::null_handle;
   gfx::handle_image_view_t depth_view = core::null_handle;
 
+  gfx::handle_bindless_storage_image_t bsimage;
+
   gfx::handle_pipeline_t diffuse;
 
   gfx::handle_managed_buffer_t camera_buffer;
 
   core::ref<diffuse_renderer_t> diffuse_renderer;
+  core::ref<debug_raytracer_t>  debug_raytracer;
 };
 
 #endif

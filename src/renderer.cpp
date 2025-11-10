@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "bvh/bvh.hpp"
 #include "horizon/core/components.hpp"
 #include "horizon/core/core.hpp"
 #include "horizon/core/ecs.hpp"
@@ -16,6 +17,7 @@
 #include "horizon/gfx/helper.hpp"
 #include "horizon/gfx/rendergraph.hpp"
 #include "horizon/gfx/types.hpp"
+#include "math/triangle.hpp"
 #include "model/model.hpp"
 
 diffuse_renderer_t::diffuse_renderer_t(core::ref<core::window_t> window,   //
@@ -81,6 +83,72 @@ void diffuse_renderer_t::render(gfx::handle_commandbuffer_t    cbuf,
   });
 }
 
+debug_raytracer_t::debug_raytracer_t(core::ref<core::window_t> window,   //
+                                     core::ref<gfx::context_t> context,  //
+                                     core::ref<gfx::base_t>    base,     //
+                                     VkFormat                  vk_format)
+    : window(window), context(context), base(base) {
+  gfx::config_pipeline_layout_t cpl{};
+  cpl.add_descriptor_set_layout(base->_bindless_descriptor_set_layout);
+  cpl.add_push_constant(sizeof(push_constant_t), VK_SHADER_STAGE_ALL);
+  pl = context->create_pipeline_layout(cpl);
+
+  c = gfx::helper::create_slang_shader(*context,
+                                       "assets/shaders/debug_raytracing.slang",
+                                       gfx::shader_type_t::e_compute);
+  gfx::config_pipeline_t cp{};
+  cp.handle_pipeline_layout = pl;
+  cp.add_color_attachment(vk_format, gfx::default_color_blend_attachment());
+  VkPipelineDepthStencilStateCreateInfo vk_pipeline_depth_state{};
+  vk_pipeline_depth_state.sType =
+      VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+  vk_pipeline_depth_state.depthTestEnable   = VK_TRUE;
+  vk_pipeline_depth_state.depthWriteEnable  = VK_TRUE;
+  vk_pipeline_depth_state.depthCompareOp    = VK_COMPARE_OP_LESS;
+  vk_pipeline_depth_state.stencilTestEnable = VK_FALSE;
+  cp.set_depth_attachment(VK_FORMAT_D32_SFLOAT, vk_pipeline_depth_state);
+  cp.add_shader(c);
+  p = context->create_compute_pipeline(cp);
+}
+
+debug_raytracer_t::~debug_raytracer_t() {}
+
+void debug_raytracer_t::render(gfx::handle_commandbuffer_t    cbuf,
+                               ecs::scene_t<>                &scene,
+                               gfx::handle_buffer_t           camera,
+                               gfx::handle_bindless_sampler_t bsampler,
+                               uint32_t width, uint32_t height,
+                               gfx::handle_bindless_storage_image_t bsimage) {
+  context->cmd_bind_pipeline(cbuf, p);
+  context->cmd_bind_descriptor_sets(cbuf, p, 0,
+                                    {base->_bindless_descriptor_set});
+  scene.for_all<model_t>([&](ecs::entity_id_t id, const model_t &model) {
+    push_constant_t pc;
+    pc.camera =
+        gfx::to<core::camera_t *>(context->get_buffer_device_address(camera));
+    check(model.meshes.size() == 1,
+          "raytracing can only be done on models with 1 meshes for now");
+    const mesh_t &mesh = model.meshes[0];
+    pc.triangles       = gfx::to<math::triangle_t *>(
+        context->get_buffer_device_address(mesh.triangles));
+    pc.bvh2_nodes = gfx::to<bvh::node_t *>(
+        context->get_buffer_device_address(mesh.bvh2_nodes));
+    pc.bvh2_prim_indices = gfx::to<uint32_t *>(
+        context->get_buffer_device_address(mesh.bvh2_prim_indices));
+    pc.cwbvh_nodes = gfx::to<bvh::cnode_t *>(
+        context->get_buffer_device_address(mesh.cwbvh_nodes));
+    pc.cwbvh_prim_indices = gfx::to<uint32_t *>(
+        context->get_buffer_device_address(mesh.cwbvh_prim_indices));
+    pc.width   = width;
+    pc.height  = height;
+    pc.bsimage = bsimage;
+    context->cmd_push_constants(cbuf, p, VK_SHADER_STAGE_ALL, 0,
+                                sizeof(push_constant_t), &pc);
+    context->cmd_dispatch(cbuf, math::ceil(width / 8), math::ceil(height / 8),
+                          1);
+  });
+}
+
 renderer_t::renderer_t(core::ref<core::window_t> window,   //
                        core::ref<gfx::context_t> context,  //
                        core::ref<gfx::base_t>    base,     //
@@ -110,6 +178,8 @@ renderer_t::renderer_t(core::ref<core::window_t> window,   //
   base->set_bindless_image(bwhite, white_view,
                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
+  bsimage = base->new_bindless_storage_image();
+
   {
     gfx::config_buffer_t cb{};
     cb.vk_size               = sizeof(core::camera_t);
@@ -121,6 +191,8 @@ renderer_t::renderer_t(core::ref<core::window_t> window,   //
   }
 
   diffuse_renderer = core::make_ref<diffuse_renderer_t>(
+      window, context, base, VK_FORMAT_R32G32B32A32_SFLOAT);
+  debug_raytracer = core::make_ref<debug_raytracer_t>(
       window, context, base, VK_FORMAT_R32G32B32A32_SFLOAT);
 }
 
@@ -181,6 +253,8 @@ void renderer_t::recreate_sized_resources(uint32_t width, uint32_t height) {
                 .handle_image_view = image_view,
                 .vk_image_layout   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL})
         .commit();
+
+    base->set_bindless_storage_image(bsimage, image_view);
   }
 }
 
@@ -231,6 +305,65 @@ std::vector<gfx::pass_t> renderer_t::get_passes(ecs::scene_t<>       &scene,
             scene.get<core::transform_t>(id).mat4();
       }
 
+      auto triangles = model::create_triangles_from_mesh(raw_mesh);
+      {
+        cb.vk_size = sizeof(triangles[0]) * triangles.size();
+        cb.vma_allocation_create_flags =
+            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        cb.debug_name =
+            std::to_string(id) + ": " + std::to_string(i) + " triangles buffer";
+        mesh.triangles = gfx::helper::create_buffer_staged(
+            *context, base->_command_pool, cb, triangles.data(), cb.vk_size);
+      }
+
+      auto [aabbs, tri_indices] = bvh::presplit(triangles, 0.3);
+
+      bvh::bvh_t bvh2 = bvh::build_bvh_sweep_sah(aabbs);
+      bvh::presplit_remove_indirection(bvh2, tri_indices);
+      bvh::presplit_remove_duplicates(bvh2);
+
+      bvh::cwbvh_t cwbvh = bvh::convert(bvh2);
+
+      {
+        cb.vk_size = sizeof(bvh2.nodes[0]) * bvh2.nodes.size();
+        cb.vma_allocation_create_flags =
+            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        cb.debug_name = std::to_string(id) + ": " + std::to_string(i) +
+                        " bvh2 nodes buffer";
+        mesh.bvh2_nodes = gfx::helper::create_buffer_staged(
+            *context, base->_command_pool, cb, bvh2.nodes.data(), cb.vk_size);
+      }
+      {
+        cb.vk_size = sizeof(bvh2.prim_indices[0]) * bvh2.prim_indices.size();
+        cb.vma_allocation_create_flags =
+            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        cb.debug_name = std::to_string(id) + ": " + std::to_string(i) +
+                        " bvh2 prim_indices buffer";
+        mesh.bvh2_prim_indices = gfx::helper::create_buffer_staged(
+            *context, base->_command_pool, cb, bvh2.prim_indices.data(),
+            cb.vk_size);
+      }
+
+      {
+        cb.vk_size = sizeof(cwbvh.nodes[0]) * cwbvh.nodes.size();
+        cb.vma_allocation_create_flags =
+            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        cb.debug_name = std::to_string(id) + ": " + std::to_string(i) +
+                        " cwbvh nodes buffer";
+        mesh.cwbvh_nodes = gfx::helper::create_buffer_staged(
+            *context, base->_command_pool, cb, cwbvh.nodes.data(), cb.vk_size);
+      }
+      {
+        cb.vk_size = sizeof(cwbvh.prim_indices[0]) * cwbvh.prim_indices.size();
+        cb.vma_allocation_create_flags =
+            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        cb.debug_name = std::to_string(id) + ": " + std::to_string(i) +
+                        " cwbvh prim_indices buffer";
+        mesh.cwbvh_prim_indices = gfx::helper::create_buffer_staged(
+            *context, base->_command_pool, cb, cwbvh.prim_indices.data(),
+            cb.vk_size);
+      }
+
       auto diffuse_info = std::find_if(
           raw_mesh.material_description.texture_infos.begin(),
           raw_mesh.material_description.texture_infos.end(),
@@ -268,6 +401,7 @@ std::vector<gfx::pass_t> renderer_t::get_passes(ecs::scene_t<>       &scene,
   std::memcpy(context->map_buffer(base->buffer(camera_buffer)), &camera,
               sizeof(core::camera_t));
 
+#if 0
   passes
       .emplace_back(
           [&, vk_rect_2d, viewport, scissor](gfx::handle_commandbuffer_t cbuf) {
@@ -290,8 +424,16 @@ std::vector<gfx::pass_t> renderer_t::get_passes(ecs::scene_t<>       &scene,
 
             context->cmd_end_rendering(cbuf);
           })
-      .add_read_image(image, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .add_write_image(image, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+#endif
+  passes
+      .emplace_back([&](gfx::handle_commandbuffer_t cbuf) {
+        debug_raytracer->render(cbuf, scene, base->buffer(camera_buffer),
+                                bsampler, width, height, bsimage);
+      })
+      .add_write_image(image, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_IMAGE_LAYOUT_GENERAL);
 
   return passes;
 }
