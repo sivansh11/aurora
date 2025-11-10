@@ -1,68 +1,75 @@
-#ifndef EDITOR_CAMERA_HPP
-#define EDITOR_CAMERA_HPP
+#ifndef CAMERA_HPP
+#define CAMERA_HPP
 
 #include <GLFW/glfw3.h>
+#include <imgui.h>
 
 #include "horizon/core/components.hpp"
-#include "horizon/core/logger.hpp"
-#include "imgui.h"
+#include "horizon/core/core.hpp"
+#include "horizon/core/window.hpp"
+#include "math/math.hpp"
 
 class editor_camera_t : public core::camera_t {
  public:
-  editor_camera_t() {}
-  ~editor_camera_t() {}
+  editor_camera_t(core::window_t &window) : _window(window) {
+    inv_view[3]          = math::vec4{-1, 0, 0, 0};
+    auto [width, height] = _window.dimensions();
+    update_projection(float(width) / float(height));
+  }
 
-  void update_projection(float aspect) {
-    static float s_aspect = 0;
-    if (s_aspect != aspect) {
-      projection = math::perspective(math::radians(fov), aspect, near, far) *
-                   math::scale(math::mat4{1.f}, math::vec3{1.f, -1.f, 1.f});
-      s_aspect = aspect;
+  void update_projection(float aspect_ratio) {
+    static float s_aspect_ratio = 0;
+    if (s_aspect_ratio != aspect_ratio) {
+      projection =
+          glm::perspective(glm::radians(fov), aspect_ratio, near, far) *
+          math::scale(math::mat4{1.f}, math::vec3{1.f, -1.f, 1.f});
+      s_aspect_ratio = aspect_ratio;
     }
   }
 
-  void update(float dt) {
-    auto vp = ImGui::GetWindowSize();
-    update_projection(vp.x / vp.y);
+  void update(float dt, float width, float height) {
+    update_projection(float(width) / float(height));
 
-    if (!should_update) ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
-    if (should_update) ImGui::SetMouseCursor(ImGuiMouseCursor_None);
-    if (!should_update) return;
-    auto mp = ImGui::GetMousePos();
+    double curX, curY;
+    glfwGetCursorPos(_window.window(), &curX, &curY);
 
     float velocity = _mouse_speed * dt * camera_speed_multiplyer;
 
-    math::vec3 position = core::camera_t::position();
+    glm::vec3 position = core::camera_t::position();
 
-    if (ImGui::IsKeyPressed(ImGuiKey_W)) position += _front * velocity;
-    if (ImGui::IsKeyPressed(ImGuiKey_S)) position -= _front * velocity;
-    if (ImGui::IsKeyPressed(ImGuiKey_D)) position += _right * velocity;
-    if (ImGui::IsKeyPressed(ImGuiKey_A)) position -= _right * velocity;
-    if (ImGui::IsKeyPressed(ImGuiKey_Space)) position += _up * velocity;
-    if (ImGui::IsKeyPressed(ImGuiKey_LeftShift)) position -= _up * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_W)) position += _front * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_S)) position -= _front * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_D)) position += _right * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_A)) position -= _right * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_SPACE))
+      position += _up * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_LEFT_SHIFT))
+      position -= _up * velocity;
 
-    math::vec2 mouse{mp.x, mp.y};
-    math::vec2 difference = mouse - _initial_mouse;
-    _initial_mouse        = mouse;
+    glm::vec2 mouse{curX, curY};
+    glm::vec2 difference = mouse - _initial_mouse;
+    _initial_mouse       = mouse;
 
-    difference.x = difference.x / float(mp.x);
-    difference.y = -(difference.y / float(mp.y));
+    if (glfwGetMouseButton(_window.window(), GLFW_MOUSE_BUTTON_1)) {
+      difference.x = difference.x / float(width);
+      difference.y = -(difference.y / float(height));
 
-    _yaw += difference.x * _mouse_sensitivity;
-    _pitch += difference.y * _mouse_sensitivity;
+      _yaw += difference.x * _mouse_sensitivity;
+      _pitch += difference.y * _mouse_sensitivity;
 
-    if (_pitch > 89.0f) _pitch = 89.0f;
-    if (_pitch < -89.0f) _pitch = -89.0f;
+      if (_pitch > 89.0f) _pitch = 89.0f;
+      if (_pitch < -89.0f) _pitch = -89.0f;
+    }
 
-    math::vec3 front;
-    front.x = math::cos(math::radians(_yaw)) * math::cos(math::radians(_pitch));
-    front.y = math::sin(math::radians(_pitch));
-    front.z = math::sin(math::radians(_yaw)) * math::cos(math::radians(_pitch));
+    glm::vec3 front;
+    front.x = glm::cos(glm::radians(_yaw)) * glm::cos(glm::radians(_pitch));
+    front.y = glm::sin(glm::radians(_pitch));
+    front.z = glm::sin(glm::radians(_yaw)) * glm::cos(glm::radians(_pitch));
     _front  = front;
-    _right  = math::normalize(math::cross(_front, math::vec3{0, 1, 0}));
-    _up     = math::normalize(math::cross(_right, _front));
+    _right  = glm::normalize(glm::cross(_front, glm::vec3{0, 1, 0}));
+    _up     = glm::normalize(glm::cross(_right, _front));
 
-    view = math::lookAt(position, position + _front, math::vec3{0, 1, 0});
+    view = glm::lookAt(position, position + _front, glm::vec3{0, 1, 0});
 
     core::camera_t::update();
   }
@@ -71,14 +78,15 @@ class editor_camera_t : public core::camera_t {
   float camera_speed_multiplyer{1.0f};
   float far{1000.0f};
   float near{0.1f};
-  bool  should_update = false;
 
  private:
-  math::vec3 _front{0.0f};
-  math::vec3 _up{0.0f, 1.0f, 0.0f};
-  math::vec3 _right{0.0f};
+  core::window_t &_window;
 
-  math::vec2 _initial_mouse{};
+  glm::vec3 _front{0.0f};
+  glm::vec3 _up{0.0f, 1.0f, 0.0f};
+  glm::vec3 _right{0.0f};
+
+  glm::vec2 _initial_mouse{};
 
   float _yaw{0.0f};
   float _pitch{0.0f};

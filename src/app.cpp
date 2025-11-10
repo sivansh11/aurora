@@ -50,7 +50,7 @@ void app_t::run() {
   uint32_t image_width = 5, image_height = 5;
 
   core::frame_timer_t frame_timer{60.f};
-  editor_camera_t     camera{};
+  editor_camera_t     camera{*window};
 
   while (!window->should_close()) {
     window->poll_events();
@@ -130,11 +130,9 @@ void app_t::run() {
         ImGui::SetNextWindowClass(&window_class);
         ImGuiWindowFlags viewPortFlags =
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoDecoration;
-        if (ImGui::IsKeyPressed(ImGuiKey_C, false))
-          camera.should_update = !camera.should_update;
         ImGui::Begin("viewport", nullptr, viewPortFlags);
         // TODO: if should update, set mouse position to center of screen
-        camera.update(dt.count());
+        camera.update(dt.count(), image_width, image_height);
 
         // horizon_info("{}", camera.view);
         //
