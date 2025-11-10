@@ -3,6 +3,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "editor_camera.hpp"
+#include "horizon/core/components.hpp"
 #include "horizon/core/core.hpp"
 #include "horizon/core/ecs.hpp"
 #include "horizon/core/logger.hpp"
@@ -19,7 +20,7 @@
 app_t::app_t(const int argc, const char** argv) : argc(argc), argv(argv) {
   check(argc == 2, "Usage: [aurora] [model]");
   window   = core::make_ref<core::window_t>("aurora", 640, 420);
-  context  = core::make_ref<gfx::context_t>(true /*validations*/);
+  context  = core::make_ref<gfx::context_t>(false /*validations*/);
   base     = core::make_ref<gfx::base_t>(window, context);
   renderer = core::make_ref<renderer_t>(window, context, base, argc, argv);
 
@@ -45,6 +46,8 @@ void app_t::run() {
     auto id = scene.create();
     scene.construct<model::raw_model_t>(id) =
         model::load_model_from_path(argv[1]);
+    core::transform_t& transform = scene.construct<core::transform_t>(id);
+    transform.scale              = {0.01, 0.01, 0.01};
   }
 
   uint32_t image_width = 5, image_height = 5;
@@ -72,7 +75,8 @@ void app_t::run() {
     vk_rect_2d.extent.width  = width;
     vk_rect_2d.extent.height = height;
     renderer->recreate_sized_resources(image_width, image_height);
-    auto renderer_passes = renderer->get_passes(scene);
+    auto renderer_passes =
+        renderer->get_passes(scene, reinterpret_cast<core::camera_t&>(camera));
     rg.passes.insert(rg.passes.end(), renderer_passes.begin(),
                      renderer_passes.end());
     rg.add_pass([&](gfx::handle_commandbuffer_t cmd) {
@@ -138,15 +142,16 @@ void app_t::run() {
         //
         // ImVec2 mouse_position  = ImGui::GetMousePos();
         // ImVec2 window_position = ImGui::GetWindowPos();
-        // auto   vp              = ImGui::GetWindowSize();
+        auto vp = ImGui::GetWindowSize();
         // bool   recreate        = false;
-        // if (image_width != vp.x || image_height != vp.y) {
-        //   recreate = true;
-        // }
-        // ImGui::Image(
-        //     reinterpret_cast<ImTextureID>(reinterpret_cast<void*>(
-        //         context->get_descriptor_set(imgui_ds).vk_descriptor_set)),
-        //     ImGui::GetContentRegionAvail());
+        if (image_width != vp.x || image_height != vp.y) {
+          image_width  = vp.x;
+          image_height = vp.y;
+        }
+        ImGui::Image(reinterpret_cast<ImTextureID>(reinterpret_cast<void*>(
+                         context->get_descriptor_set(renderer->imgui_ds)
+                             .vk_descriptor_set)),
+                     ImGui::GetContentRegionAvail());
         // if (ImGui::IsWindowHovered() &&
         //     ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
         //     update_debug_trace_ray)
@@ -162,6 +167,9 @@ void app_t::run() {
         gfx::helper::imgui_endframe(*context, cmd);
         base->cmd_end_rendering(cmd);
       })
+        .add_read_image(renderer->image, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
         .add_write_image(base->current_swapchain_image(), 0,
                          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -181,6 +189,8 @@ void app_t::run() {
         for (const auto mesh : model.meshes) {
           context->destroy_buffer(mesh.vertex_buffer);
           context->destroy_buffer(mesh.index_buffer);
+
+          context->destroy_buffer(mesh.transform);
 
           if (mesh.bdiffuse != renderer->bwhite) {
             context->destroy_image_view(mesh.diffuse_view);
