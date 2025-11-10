@@ -265,10 +265,12 @@ std::vector<gfx::pass_t> renderer_t::get_passes(renderer_data_t &renderer_data,
   std::memcpy(context->map_buffer(base->buffer(camera_buffer)), &camera,
               sizeof(core::camera_t));
 
-#if 0
-  passes
-      .emplace_back(
-          [&, vk_rect_2d, viewport, scissor](gfx::handle_commandbuffer_t cbuf) {
+  switch (rendering_mode) {
+    case rendering_mode_t::e_diffuse_raster:
+
+      passes
+          .emplace_back([&, vk_rect_2d, viewport,
+                         scissor](gfx::handle_commandbuffer_t cbuf) {
             gfx::rendering_attachment_t rendering{};
             rendering.handle_image_view = image_view;
             rendering.image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -289,18 +291,22 @@ std::vector<gfx::pass_t> renderer_t::get_passes(renderer_data_t &renderer_data,
 
             context->cmd_end_rendering(cbuf);
           })
-      .add_write_image(image, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-#else
-  passes
-      .emplace_back([&](gfx::handle_commandbuffer_t cbuf) {
-        debug_raytracer->render(cbuf, renderer_data,
-                                base->buffer(camera_buffer), bsampler, width,
-                                height, bsimage);
-      })
-      .add_write_image(image, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_IMAGE_LAYOUT_GENERAL);
-#endif
+          .add_write_image(image, 0,
+                           VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+      break;
+
+    case rendering_mode_t::e_debug_raytracing:
+      passes
+          .emplace_back([&](gfx::handle_commandbuffer_t cbuf) {
+            debug_raytracer->render(cbuf, renderer_data,
+                                    base->buffer(camera_buffer), bsampler,
+                                    width, height, bsimage);
+          })
+          .add_write_image(image, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_IMAGE_LAYOUT_GENERAL);
+      break;
+  }
 
   return passes;
 }

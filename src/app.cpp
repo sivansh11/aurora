@@ -17,6 +17,7 @@
 #include "imgui.h"
 #include "math/math.hpp"
 #include "model/model.hpp"
+#include "renderer.hpp"
 
 app_t::app_t(const int argc, const char** argv) : argc(argc), argv(argv) {
   check(argc == 2, "Usage: [aurora] [model]");
@@ -156,6 +157,14 @@ void app_t::run() {
           ImGui::Begin("settings", &settings);
           ImGui::Text("%f fps", ImGui::GetIO().Framerate);
           ImGui::DragFloat("camera speed", &camera.camera_speed_multiplyer);
+          if (ImGui::Button("diffuse_raster")) {
+            renderer->rendering_mode =
+                renderer_t::rendering_mode_t::e_diffuse_raster;
+          }
+          if (ImGui::Button("debug_raytracing")) {
+            renderer->rendering_mode =
+                renderer_t::rendering_mode_t::e_debug_raytracing;
+          }
           ImGui::End();
         }
         gfx::helper::imgui_endframe(*context, cmd);
