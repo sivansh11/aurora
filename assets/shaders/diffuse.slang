@@ -1,17 +1,4 @@
-struct camera_t {
-  float4x4 view;
-  float4x4 inv_view;
-  float4x4 projection;
-  float4x4 inv_projection;
-};
-
-struct vertex_t {
-  float3 position;
-  float3 normal;
-  float2 uv;
-  float3 tangent;
-  float3 bi_tangent;
-};
+#include "types.slang"
 
 struct mesh_t {
   vertex_t *vertices;
