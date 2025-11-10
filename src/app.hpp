@@ -10,14 +10,6 @@
 #include "model/model.hpp"
 #include "renderer.hpp"
 
-struct mesh_t {
-  model::raw_mesh_t raw_mesh;
-};
-
-struct model_t {
-  std::vector<mesh_t> meshes;
-};
-
 class app_t {
  public:
   app_t(const int argc, const char **argv);

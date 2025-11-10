@@ -64,7 +64,7 @@ void app_t::run() {
     vk_rect_2d.extent.width  = width;
     vk_rect_2d.extent.height = height;
     renderer->recreate_sized_resources(image_width, image_height);
-    auto renderer_passes = renderer->get_passes();
+    auto renderer_passes = renderer->get_passes(scene);
     rg.passes.insert(rg.passes.end(), renderer_passes.begin(),
                      renderer_passes.end());
     rg.add_pass([&](gfx::handle_commandbuffer_t cmd) {
@@ -160,6 +160,21 @@ void app_t::run() {
 
     base->end();
   }
+
+  context->wait_idle();
+
+  scene.for_all<model_t>(
+      [&scene, this](ecs::entity_id_t id, const model_t model) {
+        for (const auto mesh : model.meshes) {
+          context->destroy_buffer(mesh.vertex_buffer);
+          context->destroy_buffer(mesh.index_buffer);
+
+          if (mesh.bdiffuse != renderer->bwhite) {
+            context->destroy_image_view(mesh.diffuse_view);
+            context->destroy_image(mesh.diffuse);
+          }
+        }
+      });
 
   return;
 }
