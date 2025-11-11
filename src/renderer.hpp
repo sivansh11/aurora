@@ -25,9 +25,9 @@ struct diffuse_t {
   };
 
   diffuse_t(core::ref<core::window_t> window,   //
-                     core::ref<gfx::context_t> context,  //
-                     core::ref<gfx::base_t>    base,     //
-                     VkFormat                  vk_format);
+            core::ref<gfx::context_t> context,  //
+            core::ref<gfx::base_t>    base,     //
+            VkFormat                  vk_format);
   ~diffuse_t();
 
   void render(gfx::handle_commandbuffer_t cbuf, renderer_data_t &renderer_data,
@@ -167,9 +167,9 @@ struct renderer_t {
     e_raytracer,
   } rendering_mode = renderer_t::rendering_mode_t::e_diffuse;
 
-  core::ref<diffuse_t> diffuse_renderer;
-  core::ref<debug_raytracer_t>  debug_raytracer;
-  core::ref<raytracer_t>        raytracer;
+  core::ref<diffuse_t>         diffuse_renderer;
+  core::ref<debug_raytracer_t> debug_raytracer;
+  core::ref<raytracer_t>       raytracer;
 };
 
 #endif
