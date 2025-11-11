@@ -17,10 +17,11 @@ class app_t {
   void run();
 
  private:
-  core::ref<core::window_t> window;
-  core::ref<gfx::context_t> context;
-  core::ref<gfx::base_t>    base;
-  core::ref<renderer_t>     renderer;
+  core::ref<core::window_t>   window;
+  core::ref<gfx::context_t>   context;
+  core::ref<gfx::base_t>      base;
+  core::ref<gpu_auto_timer_t> auto_timer;
+  core::ref<renderer_t>       renderer;
 
   const int    argc;
   const char **argv;

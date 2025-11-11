@@ -1,6 +1,7 @@
 #ifndef RENDERER_HPP
 #define RENDERER_HPP
 
+#include <unordered_map>
 #include <vector>
 
 #include "assets.hpp"
@@ -14,6 +15,20 @@
 #include "horizon/gfx/types.hpp"
 #include "math/triangle.hpp"
 #include "model/model.hpp"
+
+struct gpu_auto_timer_t {
+  gpu_auto_timer_t(core::ref<gfx::base_t> base);
+  ~gpu_auto_timer_t();
+
+  // TODO: use something other than std::string
+  void start(gfx::handle_commandbuffer_t cbuf, const std::string &name);
+  void end(gfx::handle_commandbuffer_t cbuf, const std::string &name);
+
+  void clear();
+
+  core::ref<gfx::base_t>                                       base;
+  std::unordered_map<std::string, gfx::handle_managed_timer_t> timers;
+};
 
 struct diffuse_t {
   struct push_constant_t {
@@ -120,20 +135,22 @@ struct raytracer_t {
 };
 
 struct renderer_t {
-  renderer_t(core::ref<core::window_t> window,   //
-             core::ref<gfx::context_t> context,  //
-             core::ref<gfx::base_t>    base,     //
-             const int                 argc,     //
-             const char              **argv);
+  renderer_t(core::ref<core::window_t>   window,      //
+             core::ref<gfx::context_t>   context,     //
+             core::ref<gfx::base_t>      base,        //
+             core::ref<gpu_auto_timer_t> auto_timer,  //
+             const int                   argc,        //
+             const char                **argv);
   ~renderer_t();
 
   void recreate_sized_resources(uint32_t width, uint32_t height);
   std::vector<gfx::pass_t> get_passes(renderer_data_t      &renderer_data,
                                       const core::camera_t &camera);
 
-  core::ref<core::window_t> window;
-  core::ref<gfx::context_t> context;
-  core::ref<gfx::base_t>    base;
+  core::ref<core::window_t>   window;
+  core::ref<gfx::context_t>   context;
+  core::ref<gfx::base_t>      base;
+  core::ref<gpu_auto_timer_t> auto_timer;
 
   const int    argc;
   const char **argv;

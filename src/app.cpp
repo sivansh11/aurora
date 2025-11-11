@@ -21,10 +21,12 @@
 
 app_t::app_t(const int argc, const char** argv) : argc(argc), argv(argv) {
   check(argc == 2, "Usage: [aurora] [model]");
-  window   = core::make_ref<core::window_t>("aurora", 640, 420);
-  context  = core::make_ref<gfx::context_t>(false /*validations*/);
-  base     = core::make_ref<gfx::base_t>(window, context);
-  renderer = core::make_ref<renderer_t>(window, context, base, argc, argv);
+  window     = core::make_ref<core::window_t>("aurora", 640, 420);
+  context    = core::make_ref<gfx::context_t>(false /*validations*/);
+  base       = core::make_ref<gfx::base_t>(window, context);
+  auto_timer = core::make_ref<gpu_auto_timer_t>(base);
+  renderer =
+      core::make_ref<renderer_t>(window, context, base, auto_timer, argc, argv);
 
   gfx::helper::imgui_init(
       *window, *context, base->_swapchain,
@@ -81,6 +83,8 @@ void app_t::run() {
         renderer_data, reinterpret_cast<core::camera_t&>(camera));
     rg.passes.insert(rg.passes.end(), renderer_passes.begin(),
                      renderer_passes.end());
+
+    static bool clear_auto_timer = false;
     rg.add_pass([&](gfx::handle_commandbuffer_t cmd) {
         gfx::rendering_attachment_t color{};
         color.handle_image_view = base->current_swapchain_image_view();
@@ -184,6 +188,13 @@ void app_t::run() {
                     renderer_t::rendering_mode_t::e_raytracer;
                 break;
             }
+            clear_auto_timer = true;
+          }
+          for (auto [name, timer] : auto_timer->timers) {
+            auto t = context->timer_get_time(base->timer(timer));
+            if (t) {
+              ImGui::Text("%s took %fms", name.c_str(), *t);
+            }
           }
           ImGui::End();
         }
@@ -203,6 +214,11 @@ void app_t::run() {
     base->render_rendergraph(rg, base->current_commandbuffer());
 
     base->end();
+
+    if (clear_auto_timer) {
+      clear_auto_timer = false;
+      auto_timer->clear();
+    }
   }
 
   context->wait_idle();

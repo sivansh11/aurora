@@ -19,6 +19,39 @@
 #include "math/triangle.hpp"
 #include "model/model.hpp"
 
+gpu_auto_timer_t::gpu_auto_timer_t(core::ref<gfx::base_t> base) : base(base) {}
+gpu_auto_timer_t::~gpu_auto_timer_t() {
+  base->_context->wait_idle();
+  for (auto [name, timer] : timers) {
+    base->destroy_timer(timer);
+  }
+}
+
+void gpu_auto_timer_t::start(gfx::handle_commandbuffer_t cbuf,
+                             const std::string          &name) {
+  auto itr = timers.find(name);
+  if (itr == timers.end()) {
+    // didnt find
+    timers[name] =
+        base->create_timer(gfx::resource_update_policy_t::e_every_frame, {});
+  }
+  base->_context->cmd_begin_timer(cbuf, base->timer(timers[name]));
+}
+
+void gpu_auto_timer_t::end(gfx::handle_commandbuffer_t cbuf,
+                           const std::string          &name) {
+  horizon_assert(timers.contains(name), "{} not in timers", name);
+  base->_context->cmd_end_timer(cbuf, base->timer(timers[name]));
+}
+
+void gpu_auto_timer_t::clear() {
+  base->_context->wait_idle();
+  for (auto [name, timer] : timers) {
+    base->destroy_timer(timer);
+  }
+  timers.clear();
+}
+
 diffuse_t::diffuse_t(core::ref<core::window_t> window,   //
                      core::ref<gfx::context_t> context,  //
                      core::ref<gfx::base_t>    base,     //
@@ -215,12 +248,18 @@ void raytracer_t::render(gfx::handle_commandbuffer_t    cbuf,
                         math::ceil(height / 8) + 1, 1);
 }
 
-renderer_t::renderer_t(core::ref<core::window_t> window,   //
-                       core::ref<gfx::context_t> context,  //
-                       core::ref<gfx::base_t>    base,     //
-                       const int                 argc,     //
-                       const char              **argv)
-    : window(window), context(context), base(base), argc(argc), argv(argv) {
+renderer_t::renderer_t(core::ref<core::window_t>   window,      //
+                       core::ref<gfx::context_t>   context,     //
+                       core::ref<gfx::base_t>      base,        //
+                       core::ref<gpu_auto_timer_t> auto_timer,  //
+                       const int                   argc,        //
+                       const char                **argv)
+    : window(window),
+      context(context),
+      base(base),
+      auto_timer(auto_timer),
+      argc(argc),
+      argv(argv) {
   sampler  = context->create_sampler({});
   bsampler = base->new_bindless_sampler();
   base->set_bindless_sampler(bsampler, sampler);
@@ -347,6 +386,8 @@ std::vector<gfx::pass_t> renderer_t::get_passes(renderer_data_t &renderer_data,
       passes
           .emplace_back([&, vk_rect_2d, viewport,
                          scissor](gfx::handle_commandbuffer_t cbuf) {
+            auto_timer->start(cbuf, "diffuse");
+
             gfx::rendering_attachment_t rendering{};
             rendering.handle_image_view = image_view;
             rendering.image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -359,11 +400,14 @@ std::vector<gfx::pass_t> renderer_t::get_passes(renderer_data_t &renderer_data,
             depth.load_op           = VK_ATTACHMENT_LOAD_OP_CLEAR;
             depth.store_op          = VK_ATTACHMENT_STORE_OP_STORE;
             depth.clear_value.depthStencil.depth = 1;
+
             context->cmd_begin_rendering(cbuf, {rendering}, depth, vk_rect_2d);
 
             diffuse_renderer->render(cbuf, renderer_data,
                                      base->buffer(camera_buffer), bsampler,
                                      viewport, scissor);
+
+            auto_timer->end(cbuf, "diffuse");
 
             context->cmd_end_rendering(cbuf);
           })
@@ -375,9 +419,11 @@ std::vector<gfx::pass_t> renderer_t::get_passes(renderer_data_t &renderer_data,
     case rendering_mode_t::e_debug_raytracer:
       passes
           .emplace_back([&](gfx::handle_commandbuffer_t cbuf) {
+            auto_timer->start(cbuf, "debug_raytracer");
             debug_raytracer->render(cbuf, renderer_data,
                                     base->buffer(camera_buffer), bsampler,
                                     width, height, bsimage);
+            auto_timer->end(cbuf, "debug_raytracer");
           })
           .add_write_image(image, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_IMAGE_LAYOUT_GENERAL);
@@ -385,8 +431,10 @@ std::vector<gfx::pass_t> renderer_t::get_passes(renderer_data_t &renderer_data,
     case rendering_mode_t::e_raytracer:
       passes
           .emplace_back([&](gfx::handle_commandbuffer_t cbuf) {
+            auto_timer->start(cbuf, "raytracer");
             raytracer->render(cbuf, renderer_data, base->buffer(camera_buffer),
                               bsampler, width, height, bsimage);
+            auto_timer->end(cbuf, "raytracer");
           })
           .add_write_image(image, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_IMAGE_LAYOUT_GENERAL);
