@@ -1,5 +1,5 @@
-#ifndef INTERSECTION_ROUTINES
-#define INTERSECTION_ROUTINES
+#ifndef INTERSECTION_SLANG
+#define INTERSECTION_SLANG
 
 #include "types.slang"
 

@@ -1,5 +1,5 @@
-#ifndef UTILITIES_HPP
-#define UTILITIES_HPP
+#ifndef UTILITIES_SLANG
+#define UTILITIES_SLANG
 
 float safe_inverse(float x) {
   const float epsilon = 0.0001;

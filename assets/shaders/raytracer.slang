@@ -1,5 +1,6 @@
-#define USE_CWBVH
+// #define USE_CWBVH
 #include "intersection.slang"
+#include "random.slang"
 #include "types.slang"
 
 struct push_constant_t {
@@ -59,6 +60,112 @@ float3 random_color_from_id(uint32_t v) {
           (((v * 789) % 255) + 1) / 255.f};
 }
 
+float3 background(ray_t ray) {
+  float3 unit_direction = normalize(ray.direction);
+  float a = 0.5 * (unit_direction.y + 1.0);
+  return (1.0 - a) * float3(1, 1, 1) + a * float3(0.3, 0.4, 0.7);
+}
+
+float3 material_emitted(const material_t material, hit_t hit) {
+  // TODO: better material types
+  return float3(0, 0, 0);
+}
+
+bool near_zero(float3 v) {
+  const float s = 1e-8;
+  return (abs(v.x) < s) &&
+         (abs(v.y) < s) &&
+         (abs(v.z) < s);
+}
+
+bool material_scatter(const material_t material, 
+                      inout uint seed, 
+                      const vertex_t vertex,
+                      const ray_t ray, 
+                      const hit_t hit, 
+                      out float3 attenuation, 
+                      out ray_t scattered) {
+  float3 n = vertex.normal;
+  bool front_face = dot(ray.direction, n) < 0;
+  n = front_face ? n : -n;
+  
+  // TODO: better material types
+  // assuming lambertian
+  float3 scatter_direction = n + random_float3_unit_sphere(seed);
+  
+  if (near_zero(scatter_direction))
+    scatter_direction = n;
+  scattered = ray_t::create(ray.origin + hit.t * ray.direction, scatter_direction);
+  attenuation = random_color_from_id(hit.prim_index);
+  return true;
+}
+
+bool russian_roulette_terminate_ray(inout float3 throughput, inout uint seed) {
+  float p = max(throughput.x, max(throughput.y, throughput.z));
+  // TODO: make sure random_float is between 0 and 1
+  if (random_float(seed) > p) {
+    return true;
+  }
+  throughput *= 1 / p;
+  return false;
+}
+
+float3 ray_color(ray_t ray, inout uint seed, uint group_index) {
+  const uint32_t bounces = 3;
+
+  float3 color = float3(0, 0, 0);
+  float3 throughput = float3(1, 1, 1);
+
+  for (uint32_t bounce = 0; bounce < bounces + 1; bounce++) {
+#ifdef USE_CWBVH
+    hit_t hit = intersect_cwbvh(pc.cwbvh_nodes, 
+                                pc.cwbvh_prim_indices, 
+                                pc.triangles, 
+                                ray, 
+                                group_index);
+#else
+    hit_t hit = intersect_bvh(pc.bvh2_nodes, 
+                              pc.bvh2_prim_indices, 
+                              pc.triangles, 
+                              ray, 
+                              group_index);
+#endif
+    if (!hit.did_intersect()) {
+      color += throughput * background(ray);
+      break;
+    }
+
+    triangle_t triangle = pc.triangles[hit.prim_index];
+    material_t material = pc.materials[triangle.mesh_index];
+    gpu_mesh_t mesh = pc.meshes[triangle.mesh_index];
+    vertex_t v = barry(
+                       1.f - hit.u - hit.v, 
+                       hit.u, 
+                       hit.v, 
+                       triangle, 
+                       mesh, 
+                       hit.prim_index);
+
+    float3 emission = material_emitted(material, hit);
+    color += throughput * emission;
+    
+    float3 attenuation;
+    ray_t scattered;
+
+    if (!material_scatter(material, seed, v, ray, hit, attenuation, scattered)) {
+      break;
+    }
+
+    throughput = throughput * attenuation;
+    ray = scattered;
+
+    if (russian_roulette_terminate_ray(throughput, seed)) {
+      break;
+    }
+  }
+  return color;
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void compute_main(uint3 dispatch_thread_id : SV_DispatchThreadID, 
@@ -74,35 +181,9 @@ void compute_main(uint3 dispatch_thread_id : SV_DispatchThreadID,
                             pc.camera->inv_projection,
                             pc.camera->inv_view);
 
-#ifdef USE_CWBVH
-  hit_t hit = intersect_cwbvh(pc.cwbvh_nodes, 
-                              pc.cwbvh_prim_indices, 
-                              pc.triangles, 
-                              ray, 
-                              group_index);
-#else
-  hit_t hit = intersect_bvh(pc.bvh2_nodes, 
-                            pc.bvh2_prim_indices, 
-                            pc.triangles, 
-                            ray, 
-                            group_index);
-#endif
-
-  if (hit.did_intersect()) {
-    triangle_t triangle = pc.triangles[hit.prim_index];
-    gpu_mesh_t mesh = pc.meshes[triangle.mesh_index];
-    vertex_t v = barry(
-                       1.f - hit.u - hit.v, 
-                       hit.u, 
-                       hit.v, 
-                       triangle, 
-                       mesh, 
-                       hit.prim_index);
-    rwtextures[pc.bsimage][uint2(dispatch_thread_id.x, dispatch_thread_id.y)]
-      = textures[NonUniformResourceIndex(pc.materials[triangle.mesh_index].bdiffuse)]
-        .Sample(samplers[pc.bsampler], v.uv);
-  } else {
-    rwtextures[pc.bsimage][uint2(dispatch_thread_id.x, dispatch_thread_id.y)]
-      = float4(0,0,0,0);
-  }
+  uint seed = uint(dispatch_thread_id.x + pc.width * 
+                   (dispatch_thread_id.y + pc.height)); 
+  float3 color = ray_color(ray, seed, group_index);
+  rwtextures[pc.bsimage][uint2(dispatch_thread_id.x, dispatch_thread_id.y)]
+    = float4(color, 1);
 }
