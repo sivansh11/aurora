@@ -165,17 +165,25 @@ void app_t::run() {
           ImGui::Begin("settings", &settings);
           ImGui::Text("%f fps", ImGui::GetIO().Framerate);
           ImGui::DragFloat("camera speed", &camera.camera_speed_multiplyer);
-          if (ImGui::Button("diffuse")) {
-            renderer->rendering_mode =
-                renderer_t::rendering_mode_t::e_diffuse_raster;
-          }
-          if (ImGui::Button("debug_raytracer")) {
-            renderer->rendering_mode =
-                renderer_t::rendering_mode_t::e_debug_raytracer;
-          }
-          if (ImGui::Button("raytracer")) {
-            renderer->rendering_mode =
-                renderer_t::rendering_mode_t::e_raytracer;
+          const char* rendering_modes[] = {"diffuse", "debug_raytracer",
+                                           "raytracer"};
+          static int  current_mode      = 0;
+          if (ImGui::Combo("Rendering Mode", &current_mode, rendering_modes,
+                           IM_ARRAYSIZE(rendering_modes))) {
+            switch (current_mode) {
+              case 0:
+                renderer->rendering_mode =
+                    renderer_t::rendering_mode_t::e_diffuse;
+                break;
+              case 1:
+                renderer->rendering_mode =
+                    renderer_t::rendering_mode_t::e_debug_raytracer;
+                break;
+              case 2:
+                renderer->rendering_mode =
+                    renderer_t::rendering_mode_t::e_raytracer;
+                break;
+            }
           }
           ImGui::End();
         }

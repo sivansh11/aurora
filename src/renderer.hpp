@@ -162,10 +162,10 @@ struct renderer_t {
   gfx::handle_managed_buffer_t camera_buffer;
 
   enum class rendering_mode_t {
-    e_diffuse_raster,
+    e_diffuse,
     e_debug_raytracer,
     e_raytracer,
-  } rendering_mode = renderer_t::rendering_mode_t::e_diffuse_raster;
+  } rendering_mode = renderer_t::rendering_mode_t::e_diffuse;
 
   core::ref<diffuse_t> diffuse_renderer;
   core::ref<debug_raytracer_t>  debug_raytracer;

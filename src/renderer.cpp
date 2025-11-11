@@ -342,7 +342,7 @@ std::vector<gfx::pass_t> renderer_t::get_passes(renderer_data_t &renderer_data,
               sizeof(core::camera_t));
 
   switch (rendering_mode) {
-    case rendering_mode_t::e_diffuse_raster:
+    case rendering_mode_t::e_diffuse:
 
       passes
           .emplace_back([&, vk_rect_2d, viewport,
