@@ -96,7 +96,9 @@ bool material_scatter(const material_t material,
   if (near_zero(scatter_direction))
     scatter_direction = n;
   scattered = ray_t::create(ray.origin + hit.t * ray.direction, scatter_direction);
-  attenuation = random_color_from_id(hit.prim_index);
+  // attenuation = random_color_from_id(hit.prim_index);
+  attenuation = textures[NonUniformResourceIndex(material.bdiffuse)]
+    .Sample(samplers[pc.bsampler], vertex.uv).xyz;
   return true;
 }
 
