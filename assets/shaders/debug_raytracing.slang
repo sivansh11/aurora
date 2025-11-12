@@ -1,4 +1,3 @@
-#define USE_CWBVH
 #define DEBUG_HIT // to enable intersection stats in hit
 #include "intersection.slang"
 #include "types.slang"
@@ -10,9 +9,6 @@ struct push_constant_t {
 
   bvh2_node_t           *bvh2_nodes;
   uint32_t              *bvh2_prim_indices;
-
-  cwbvh_node_aliased_t  *cwbvh_nodes;
-  uint32_t              *cwbvh_prim_indices;
 
   uint32_t              width;
   uint32_t              height;
@@ -62,19 +58,11 @@ void compute_main(uint3 dispatch_thread_id : SV_DispatchThreadID,
                             pc.camera->inv_projection,
                             pc.camera->inv_view);
 
-#ifdef USE_CWBVH
-  hit_t hit = intersect_cwbvh(pc.cwbvh_nodes, 
-                              pc.cwbvh_prim_indices, 
-                              pc.triangles, 
-                              ray, 
-                              group_index);
-#else
   hit_t hit = intersect_bvh(pc.bvh2_nodes, 
                             pc.bvh2_prim_indices, 
                             pc.triangles, 
                             ray, 
                             group_index);
-#endif
 
   float value = hit.node_intersections +
             (hit.triangle_intersections * 1.1f);

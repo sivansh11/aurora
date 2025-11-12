@@ -66,8 +66,6 @@ struct debug_raytracer_t {
     triangle_t                          *triangles;
     bvh::node_t                         *bvh2_nodes;
     uint32_t                            *bvh2_prim_indices;
-    bvh::cnode_t                        *cwbvh_nodes;
-    uint32_t                            *cwbvh_prim_indices;
     uint32_t                             width;
     uint32_t                             height;
     gfx::handle_bindless_storage_image_t bsimage;
@@ -102,8 +100,6 @@ struct raytracer_t {
     triangle_t                          *triangles;
     bvh::node_t                         *bvh2_nodes;
     uint32_t                            *bvh2_prim_indices;
-    bvh::cnode_t                        *cwbvh_nodes;
-    uint32_t                            *cwbvh_prim_indices;
     uint32_t                             width;
     uint32_t                             height;
     gfx::handle_bindless_storage_image_t bsimage;

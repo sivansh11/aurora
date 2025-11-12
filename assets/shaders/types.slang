@@ -56,29 +56,6 @@ struct bvh2_node_t {
   uint32_t prim_count; // 16 bytes, total: 32 bytes
 };
 
-struct cwbvh_node_t {
-  float3     p;
-  uint8_t    e[3];
-  uint8_t    imask;
-  uint32_t   child_base_index;
-  uint32_t   primitive_base_index;
-  uint8_t    child_meta[8];
-  uint8_t    child_min_x[8];
-  uint8_t    child_max_x[8];
-  uint8_t    child_min_y[8];
-  uint8_t    child_max_y[8];
-  uint8_t    child_min_z[8];
-  uint8_t    child_max_z[8];
-};
-
-struct cwbvh_node_aliased_t {
-  float4 node_0;
-  float4 node_1;
-  float4 node_2;
-  float4 node_3;
-  float4 node_4;
-};
-
 struct triangle_hit_t {
   bool did_intersect() { return _did_intersect; }
   float t, u, v;

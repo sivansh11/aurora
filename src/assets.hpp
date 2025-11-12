@@ -54,8 +54,6 @@ struct renderer_data_t {
   gfx::handle_buffer_t triangles_buffer;
   gfx::handle_buffer_t bvh2_nodes;
   gfx::handle_buffer_t bvh2_prim_indices;
-  gfx::handle_buffer_t cwbvh_nodes;
-  gfx::handle_buffer_t cwbvh_prim_indices;
   gfx::handle_buffer_t materials_buffer;
   gfx::handle_buffer_t meshes_buffer;
 

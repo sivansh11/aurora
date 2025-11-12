@@ -109,8 +109,6 @@ renderer_data_t assets_manager_t::prepare(
   gfx::handle_buffer_t triangles_buffer;
   gfx::handle_buffer_t bvh2_nodes;
   gfx::handle_buffer_t bvh2_prim_indices;
-  gfx::handle_buffer_t cwbvh_nodes;
-  gfx::handle_buffer_t cwbvh_prim_indices;
   gfx::handle_buffer_t materials_buffer;
   gfx::handle_buffer_t meshes_buffer;
 
@@ -126,23 +124,12 @@ renderer_data_t assets_manager_t::prepare(
   std::vector<math::triangle_t> tmp_triangles{};
   for (auto triangle : triangles) tmp_triangles.push_back(triangle.triangle);
 
-  // auto [aabbs, tri_indices] = bvh::presplit(tmp_triangles, 0.3);
-  auto aabbs = math::aabbs_from_triangles(tmp_triangles);
+  auto [aabbs, tri_indices] = bvh::presplit(tmp_triangles, 0.3);
+  // auto aabbs = math::aabbs_from_triangles(tmp_triangles);
 
-  bvh::bvh_t bvh2 = bvh::build_bvh_sweep_sah(aabbs, 1, 1);
-  uint32_t   min  = std::numeric_limits<uint32_t>::max();
-  uint32_t   max  = 0;
-  for (const auto& node : bvh2.nodes) {
-    if (!node.is_leaf()) continue;
-    min = std::min(node.prim_count, min);
-    max = std::max(node.prim_count, max);
-  }
-  check(min == 1, "min prim needs to be 1 but it is {}", min);
-  check(max == 1, "max prim needs to be 1 but it is {}", max);
-  // bvh::presplit_remove_indirection(bvh2, tri_indices);
-  // bvh::presplit_remove_duplicates(bvh2);
-
-  bvh::cwbvh_t cwbvh = bvh::convert(bvh2);
+  bvh::bvh_t bvh2 = bvh::build_bvh_sweep_sah(aabbs);
+  bvh::presplit_remove_indirection(bvh2, tri_indices);
+  bvh::presplit_remove_duplicates(bvh2);
 
   {
     cb.vk_size                     = sizeof(bvh2.nodes[0]) * bvh2.nodes.size();
@@ -159,19 +146,6 @@ renderer_data_t assets_manager_t::prepare(
   }
 
   {
-    cb.vk_size = sizeof(cwbvh.nodes[0]) * cwbvh.nodes.size();
-    cb.vma_allocation_create_flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    cwbvh_nodes                    = gfx::helper::create_buffer_staged(
-        *context, base->_command_pool, cb, cwbvh.nodes.data(), cb.vk_size);
-  }
-  {
-    cb.vk_size = sizeof(cwbvh.prim_indices[0]) * cwbvh.prim_indices.size();
-    cb.vma_allocation_create_flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    cwbvh_prim_indices             = gfx::helper::create_buffer_staged(
-        *context, base->_command_pool, cb, cwbvh.prim_indices.data(),
-        cb.vk_size);
-  }
-  {
     cb.vk_size                     = sizeof(materials[0]) * materials.size();
     cb.vma_allocation_create_flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
     materials_buffer               = gfx::helper::create_buffer_staged(
@@ -187,8 +161,6 @@ renderer_data_t assets_manager_t::prepare(
       triangles_buffer,
       bvh2_nodes,
       bvh2_prim_indices,
-      cwbvh_nodes,
-      cwbvh_prim_indices,
       materials_buffer,
       meshes_buffer,
       cpu_meshes,

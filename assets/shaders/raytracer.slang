@@ -1,4 +1,3 @@
-// #define USE_CWBVH
 #include "intersection.slang"
 #include "random.slang"
 #include "types.slang"
@@ -13,9 +12,6 @@ struct push_constant_t {
 
   bvh2_node_t           *bvh2_nodes;
   uint32_t              *bvh2_prim_indices;
-
-  cwbvh_node_aliased_t  *cwbvh_nodes;
-  uint32_t              *cwbvh_prim_indices;
 
   uint32_t              width;
   uint32_t              height;
@@ -119,19 +115,11 @@ float3 ray_color(ray_t ray, inout uint seed, uint group_index) {
   float3 throughput = float3(1, 1, 1);
 
   for (uint32_t bounce = 0; bounce < bounces + 1; bounce++) {
-#ifdef USE_CWBVH
-    hit_t hit = intersect_cwbvh(pc.cwbvh_nodes, 
-                                pc.cwbvh_prim_indices, 
-                                pc.triangles, 
-                                ray, 
-                                group_index);
-#else
     hit_t hit = intersect_bvh(pc.bvh2_nodes, 
                               pc.bvh2_prim_indices, 
                               pc.triangles, 
                               ray, 
                               group_index);
-#endif
     if (!hit.did_intersect()) {
       color += throughput * background(ray);
       break;
@@ -183,9 +171,34 @@ void compute_main(uint3 dispatch_thread_id : SV_DispatchThreadID,
                             pc.camera->inv_projection,
                             pc.camera->inv_view);
 
-  uint seed = uint(dispatch_thread_id.x + pc.width * 
-                   (dispatch_thread_id.y + pc.height)); 
-  float3 color = ray_color(ray, seed, group_index);
-  rwtextures[pc.bsimage][uint2(dispatch_thread_id.x, dispatch_thread_id.y)]
-    = float4(color, 1);
+  hit_t hit = intersect_bvh(pc.bvh2_nodes, 
+                            pc.bvh2_prim_indices, 
+                            pc.triangles, 
+                            ray, 
+                            group_index);
+
+  if (hit.did_intersect()) {
+    triangle_t triangle = pc.triangles[hit.prim_index];
+    gpu_mesh_t mesh = pc.meshes[triangle.mesh_index];
+    vertex_t v = barry(
+                       1.f - hit.u - hit.v, 
+                       hit.u, 
+                       hit.v, 
+                       triangle, 
+                       mesh, 
+                       hit.prim_index);
+    rwtextures[pc.bsimage][uint2(dispatch_thread_id.x, dispatch_thread_id.y)]
+      // = float4(random_color_from_id(hit.prim_index), 1);
+     = textures[NonUniformResourceIndex(pc.materials[triangle.mesh_index].bdiffuse)]
+       .Sample(samplers[pc.bsampler], v.uv);
+  } else {
+    rwtextures[pc.bsimage][uint2(dispatch_thread_id.x, dispatch_thread_id.y)]
+      = float4(0,0,0,0);
+  }
+
+  // uint seed = uint(dispatch_thread_id.x + pc.width * 
+  //                  (dispatch_thread_id.y + pc.height)); 
+  // float3 color = ray_color(ray, seed, group_index);
+  // rwtextures[pc.bsimage][uint2(dispatch_thread_id.x, dispatch_thread_id.y)]
+  //   = float4(color, 1);
 }

@@ -165,10 +165,6 @@ void debug_raytracer_t::render(gfx::handle_commandbuffer_t    cbuf,
       context->get_buffer_device_address(renderer_data.bvh2_nodes));
   pc.bvh2_prim_indices = gfx::to<uint32_t *>(
       context->get_buffer_device_address(renderer_data.bvh2_prim_indices));
-  pc.cwbvh_nodes = gfx::to<bvh::cnode_t *>(
-      context->get_buffer_device_address(renderer_data.cwbvh_nodes));
-  pc.cwbvh_prim_indices = gfx::to<uint32_t *>(
-      context->get_buffer_device_address(renderer_data.cwbvh_prim_indices));
   pc.width   = width;
   pc.height  = height;
   pc.bsimage = bsimage;
@@ -230,10 +226,6 @@ void raytracer_t::render(gfx::handle_commandbuffer_t    cbuf,
       context->get_buffer_device_address(renderer_data.bvh2_nodes));
   pc.bvh2_prim_indices = gfx::to<uint32_t *>(
       context->get_buffer_device_address(renderer_data.bvh2_prim_indices));
-  pc.cwbvh_nodes = gfx::to<bvh::cnode_t *>(
-      context->get_buffer_device_address(renderer_data.cwbvh_nodes));
-  pc.cwbvh_prim_indices = gfx::to<uint32_t *>(
-      context->get_buffer_device_address(renderer_data.cwbvh_prim_indices));
   pc.width           = width;
   pc.height          = height;
   pc.bsimage         = bsimage;
